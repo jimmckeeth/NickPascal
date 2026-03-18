@@ -612,7 +612,7 @@ A value of type `S` is assignment-compatible with type `T` if any of the followi
 6. `S` and `T` are both string types.
 7. `S` is a string type and `T` is `Char`, or vice versa (with length constraints).
 8. `S` and `T` are compatible set types.
-9. `S` is `T`'s ancestor class type (widening), or `T` is an interface implemented by `S`.
+9. `S` is a descendant of `T`'s class type (widening), or `T` is an interface implemented by `S`.
 10. `S` is `nil` and `T` is a pointer, class, class-reference, interface, procedural, or dynamic-array type.
 11. `S` is a procedural type compatible with `T` (matching parameter lists and calling convention).
 12. `S` is `Variant` and `T` is a type for which variant conversion is defined, or vice versa.
@@ -834,7 +834,7 @@ A multi-dimensional array `array[T1, T2] of X` is equivalent to `array[T1] of ar
 DYNAMIC_ARRAY_TYPE = 'array' 'of' BASE_TYPE ;
 ```
 
-Dynamic arrays are **reference-counted**, **copy-on-write**, heap-allocated. They are **0-based** (the first element is index 0).
+Dynamic arrays are **reference-counted**, heap-allocated. They are **0-based** (the first element is index 0). Unlike strings, dynamic arrays do **not** use copy-on-write; assigning one dynamic array variable to another shares the same data.
 
 Memory layout:
 
@@ -3288,7 +3288,7 @@ The following types are **reference-counted** with **copy-on-write** (COW):
 |------|-------------|-----|
 | `string` (UnicodeString) | Yes | Yes |
 | `AnsiString` | Yes | Yes |
-| Dynamic arrays | Yes | Yes |
+| Dynamic arrays | Yes | No (shared reference on assign) |
 | Interfaces | Yes | No (shared, not COW) |
 | `Variant` | By value (deep copy on assign) | N/A |
 
