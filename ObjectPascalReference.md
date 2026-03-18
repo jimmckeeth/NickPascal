@@ -136,22 +136,23 @@ A qualified identifier uses dot notation to resolve ambiguity. `System.SysUtils.
 Reserved words have fixed meaning in the language and cannot be used as identifiers (except via the `&` prefix). The complete list:
 
 ```
-and          end          nil          set
-array        except       not          shl
-as           exports      object       shr
-asm          file         of           string
-begin        finalization on           then
-case         finally      operator     threadvar
-class        for          or           to
-const        function     out          try
-constructor  goto         packed       type
-destructor   if           procedure    unit
-dispinterface implementation program   until
-div          in           property     uses
-do           inherited    raise        var
-downto       initialization record     while
-else         inline       repeat       with
-end          interface    resourcestring xor
+and          exports      mod          set
+array        file         nil          shl
+as           finalization not          shr
+asm          finally      object       string
+begin        for          of           then
+case         function     on           threadvar
+class        goto         operator     to
+const        if           or           try
+constructor  implementation out        type
+destructor   in           packed       unit
+dispinterface inherited   procedure    until
+div          initialization program    uses
+do           inline       property     var
+downto       interface    raise        while
+else         is           record       with
+end          label        repeat       xor
+except       library      resourcestring
 ```
 
 Note: `inline` is a reserved word as of Delphi 2005 and later. In older versions it was a directive.
@@ -4085,7 +4086,7 @@ The `System` unit is implicitly used by every unit and program. It is always in 
 
 ## Appendix A: Complete Reserved Words and Directives
 
-### A.1 Reserved Words (63 total)
+### A.1 Reserved Words (67 total)
 
 ```
 and           array         as            asm
