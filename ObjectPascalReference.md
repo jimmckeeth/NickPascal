@@ -975,6 +975,93 @@ FILE_TYPE = 'file' 'of' TYPE
 
 File variables shall not be assigned (copied). They must be passed by reference.
 
+#### 3.6.5 File I/O Operations
+
+File I/O follows a consistent protocol: associate a file variable with a filename, open it, perform reads/writes, and close it.
+
+**Text files (`TextFile`):**
+
+```pascal
+var
+  F: TextFile;
+begin
+  AssignFile(F, 'output.txt');
+  Rewrite(F);             // create/truncate for writing
+  WriteLn(F, 'Hello');    // write line
+  CloseFile(F);
+
+  AssignFile(F, 'output.txt');
+  Reset(F);               // open for reading
+  while not Eof(F) do
+  begin
+    var Line: string;
+    ReadLn(F, Line);
+  end;
+  CloseFile(F);
+
+  AssignFile(F, 'output.txt');
+  Append(F);              // open for appending (text files only)
+  WriteLn(F, 'Appended');
+  CloseFile(F);
+end;
+```
+
+**Typed files (`file of T`):**
+
+```pascal
+var
+  F: file of TMyRecord;
+  Rec: TMyRecord;
+begin
+  AssignFile(F, 'data.bin');
+  Rewrite(F);
+  Write(F, Rec);          // write one record
+  CloseFile(F);
+
+  Reset(F);
+  while not Eof(F) do
+    Read(F, Rec);          // read one record
+  Seek(F, 0);             // reposition to beginning
+  FilePos(F);             // current record index
+  FileSize(F);            // total records
+  CloseFile(F);
+end;
+```
+
+**Untyped files (`file`):**
+
+Untyped files use `BlockRead` and `BlockWrite` for raw byte-level I/O. `Reset` and `Rewrite` accept an optional record-size parameter (default 128):
+
+```pascal
+var
+  F: file;
+  Buf: array[0..4095] of Byte;
+  BytesRead: Integer;
+begin
+  AssignFile(F, 'data.bin');
+  Reset(F, 1);            // open with record size = 1 byte
+  BlockRead(F, Buf, SizeOf(Buf), BytesRead);
+  CloseFile(F);
+end;
+```
+
+**I/O error handling:**
+
+By default, I/O errors raise `EInOutError`. The `{$I-}` directive disables automatic checking; errors are then retrieved via `IOResult`:
+
+```pascal
+{$I-}
+AssignFile(F, 'maybe.txt');
+Reset(F);
+if IOResult <> 0 then
+  // file does not exist or cannot be opened
+{$I+}
+```
+
+Each call to `IOResult` clears the stored error code. Calling any I/O routine while a pending `IOResult` has not been checked produces undefined behavior.
+
+**Standard file variables:** `Input` and `Output` are predefined `TextFile` variables bound to stdin and stdout. `Write` and `WriteLn` without a file parameter write to `Output`; `Read` and `ReadLn` read from `Input`.
+
 ### 3.7 Pointer Types
 
 ```
@@ -1040,6 +1127,26 @@ Operations on variants are resolved at **runtime** using type coercion rules. If
 
 `OleVariant` is a variant type restricted to OLE-compatible types (no `AnsiString`, no custom types). It is used for COM interop.
 
+#### 3.9.1 Variant Conversion Rules
+
+When performing operations on variants, the compiler inserts runtime conversion calls. The conversion priority (highest to lowest):
+
+1. If both operands are the same type, no conversion occurs.
+2. If either operand is a `string`, the other is converted to `string`.
+3. If either operand is `Double` (or `Extended`), the other is converted to `Double`.
+4. If either operand is `Currency`, the other is converted to `Currency`.
+5. If either operand is `Int64`, the other is converted to `Int64`.
+6. Otherwise, both are converted to `Integer` (if they fit) or `Int64`.
+
+Assigning a `Variant` to a typed variable performs an implicit conversion. If the conversion is not possible, `EVariantTypeCastError` is raised.
+
+Special values:
+
+- **`Unassigned`** — the variant has no value (initial state). Any operation on an `Unassigned` variant raises `EVariantError`.
+- **`Null`** — represents a database null or missing value. Arithmetic with `Null` propagates `Null` (unless `NullStrictConvert` is `True`, which raises an exception instead).
+
+**Custom variant types** can be created by descending from `TCustomVariantType` and registering the type, enabling variants to hold arbitrary data with custom conversion and operator semantics.
+
 ### 3.10 Type Aliases and Distinct Types
 
 ```pascal
@@ -1075,9 +1182,12 @@ type
 
 Rules:
 
-1. Only **one** helper per type can be active in a given scope. If multiple helpers for the same type are in scope, the last one (in `uses` order) wins.
-2. Helpers can extend any named simple type, record type, class type, or enumerated type.
-3. Helper methods receive `Self` as an implicit parameter (by value for value types, by reference for class types).
+1. Only **one** helper per type can be active in a given scope. If multiple helpers for the same type are in scope, the **last one** in `uses` clause order wins — all others are hidden, not merged.
+2. Helper resolution is by **exact type match**. A helper for `Integer` does not apply to a distinct type `type TMyInt = type Integer`, and a class helper for `TObject` does not apply to `TButton` (you need a helper specifically for `TButton` or its ancestor that is the closest match).
+3. Helpers can extend any named simple type, record type, class type, or enumerated type.
+4. Helper methods receive `Self` as an implicit parameter (by value for value types, by reference for class types).
+5. Helpers can be chained via inheritance: `TExtendedHelper = record helper(TBaseHelper) for Integer` inherits the base helper's methods. However, the one-helper-per-type rule still applies — if both are in scope, only the descendant is active.
+6. A helper's methods and properties are found **after** the type's own members. If the helped type already has a method `Foo`, the helper's `Foo` is hidden (the type's own member wins).
 
 ---
 
@@ -2410,10 +2520,13 @@ type
 ```
 
 Rules:
-1. Only one class helper per class can be active in a given scope.
+1. Only one class helper per class can be active in a given scope. The **last** in `uses` clause order wins; all others are hidden.
 2. Class helpers can add methods and properties but **not** fields.
 3. `Self` in a class helper refers to the instance of the helped class.
 4. Helpers can access `private` and `protected` members of the helped class (within the same unit).
+5. Helper resolution matches the **declared type** of the variable, not the runtime type. A helper for `TObject` is only active when the variable is typed as `TObject`, not for variables typed as descendants.
+6. Class helpers can inherit from other class helpers via the parent clause: `TMyHelper = class helper(TBaseHelper) for TFoo`. The one-helper-per-class rule still applies.
+7. If the helped class already defines a member with the same name, the class's own member takes precedence over the helper's member.
 
 ### 8.16 Nested Types and Constants
 
@@ -2811,7 +2924,7 @@ Rules:
 1. `Initialize` receives an `out` parameter (zero-initialized before the call).
 2. `Finalize` receives a `var` parameter.
 3. `Assign` receives `var Dest` and `const [ref] Src`.
-4. If `Assign` is not defined, assignment copies bytes then calls `Initialize` for the destination's managed sub-fields.
+4. If `Assign` is not defined, the compiler generates a default assignment: it first finalizes the destination's managed sub-fields (decrementing reference counts), copies the raw bytes, and then increments reference counts for the source's managed sub-fields.
 5. Managed records incur overhead: the compiler inserts `Initialize`/`Finalize` calls around every scope where such a record exists.
 
 ---
@@ -3032,7 +3145,9 @@ METHOD_REFERENCE = 'reference' 'to' ( PROCEDURE_TYPE | FUNCTION_TYPE ) ;
 ```pascal
 type
   TProc = reference to procedure;
+  TFunc<TResult> = reference to function: TResult;
   TFunc<T, TResult> = reference to function(const Arg: T): TResult;
+  TFunc<T1, T2, TResult> = reference to function(const Arg1: T1; const Arg2: T2): TResult;
   TPredicate<T> = reference to function(const Value: T): Boolean;
 ```
 
@@ -3130,7 +3245,7 @@ Exception = class(TObject)
   constructor CreateFmt(const Msg: string; const Args: array of const);
   property Message: string;
   property HelpContext: Integer;
-  property StackTrace: string;  // Delphi 12+
+  property StackTrace: string;  // Delphi 2009+; requires a stack trace provider
 end;
 ```
 
@@ -3775,6 +3890,22 @@ Available functions in `{$IF}` expressions:
 - `SizeOf(TYPE)` — size of type
 - Standard arithmetic and boolean operators
 
+#### 17.4.3 Testing Compiler Switch States (`{$IFOPT}`)
+
+`{$IFOPT}` tests whether a specific compiler switch is on or off:
+
+```pascal
+{$IFOPT R+}
+  // Range checking is enabled
+{$ENDIF}
+
+{$IFOPT O-}
+  // Overflow checking is disabled
+{$ENDIF}
+```
+
+The switch letter corresponds to the short form of the compiler directive (e.g., `R` for `{$RANGECHECKS}`, `Q` for `{$OVERFLOWCHECKS}`, `I` for `{$IOCHECKS}`, `O` for `{$OPTIMIZATION}`). `{$IFOPT}` only works with switches that have a short-form letter; it cannot test arbitrary symbols.
+
 ---
 
 ## Chapter 18: Calling Conventions and Interoperability
@@ -4316,13 +4447,13 @@ ProcedureDecl     = ProcHeader ';' [ DirectiveList ';' ]
 FunctionDecl      = FuncHeader ';' [ DirectiveList ';' ]
                     ( Block ';' | ExternalDir ';' | 'forward' ';' ) ;
 
-ProcHeader        = 'procedure' [ 'class' ] Ident [ GenericParams ] [ FormalParams ] ;
-FuncHeader        = 'function' [ 'class' ] Ident [ GenericParams ] [ FormalParams ]
+ProcHeader        = [ 'class' ] 'procedure' Ident [ GenericParams ] [ FormalParams ] ;
+FuncHeader        = [ 'class' ] 'function' Ident [ GenericParams ] [ FormalParams ]
                     ':' Type ;
 
 MethodDecl        = MethodHeader ';' [ DirectiveList ';' ] ;
-MethodHeader      = ( 'procedure' | 'function' | 'constructor' | 'destructor' )
-                    [ 'class' ] Ident [ GenericParams ] [ FormalParams ]
+MethodHeader      = [ 'class' ] ( 'procedure' | 'function' | 'constructor' | 'destructor' )
+                    Ident [ GenericParams ] [ FormalParams ]
                     [ ':' Type ] ;
 
 FormalParams      = '(' ParamGroup { ';' ParamGroup } ')' ;
@@ -4612,20 +4743,31 @@ The VMT pointer points to the first virtual method entry. Negative offsets conta
 
 | Offset | Field | Type |
 |--------|-------|------|
-| -76 (varies) | `vmtSelfPtr` | Pointer to VMT itself |
-| -72 | `vmtIntfTable` | Pointer to interface table |
-| -68 | `vmtAutoTable` | Automation info |
-| -64 | `vmtInitTable` | Field initialization table |
-| -60 | `vmtTypeInfo` | RTTI pointer |
-| -56 | `vmtFieldTable` | Published field table |
-| -52 | `vmtMethodTable` | Published method table |
-| -48 | `vmtDynamicTable` | Dynamic method table |
-| -44 | `vmtClassName` | Pointer to class name (ShortString) |
-| -40 | `vmtInstanceSize` | Instance size |
-| -36 | `vmtParent` | Pointer to parent VMT |
-| 0+ | Virtual method pointers | Code pointers |
+| -88 | `vmtSelfPtr` | Pointer to VMT itself |
+| -84 | `vmtIntfTable` | Pointer to interface table |
+| -80 | `vmtAutoTable` | Automation info |
+| -76 | `vmtInitTable` | Field initialization table |
+| -72 | `vmtTypeInfo` | RTTI pointer |
+| -68 | `vmtFieldTable` | Published field table |
+| -64 | `vmtMethodTable` | Published method table |
+| -60 | `vmtDynamicTable` | Dynamic method table |
+| -56 | `vmtClassName` | Pointer to class name (ShortString) |
+| -52 | `vmtInstanceSize` | Instance size |
+| -48 | `vmtParent` | Pointer to parent VMT |
+| -44 | `vmtEquals` | `Equals` virtual method (Delphi 10.4+) |
+| -40 | `vmtGetHashCode` | `GetHashCode` virtual method (Delphi 10.4+) |
+| -36 | `vmtToString` | `ToString` virtual method (Delphi 10.4+) |
+| -32 | `vmtSafeCallException` | `SafeCallException` virtual method |
+| -28 | `vmtAfterConstruction` | `AfterConstruction` virtual method |
+| -24 | `vmtBeforeDestruction` | `BeforeDestruction` virtual method |
+| -20 | `vmtDispatch` | `Dispatch` virtual method |
+| -16 | `vmtDefaultHandler` | `DefaultHandler` virtual method |
+| -12 | `vmtNewInstance` | `NewInstance` virtual method |
+| -8  | `vmtFreeInstance` | `FreeInstance` virtual method |
+| -4  | `vmtDestroy` | `Destroy` virtual method |
+| 0+  | User virtual method pointers | Code pointers |
 
-(Exact offsets are platform-dependent; shown for Win32. On Win64, all offsets are doubled.)
+(Exact offsets are platform-dependent; shown for Win32/Delphi 12 Athens. On Win64, entries that are pointers or `NativeInt` values occupy 8 bytes instead of 4, so the total size of the negative-offset metadata region differs from a simple doubling of Win32 offsets. Consult the `System` unit source for the actual `vmt*` constants on each target platform.)
 
 ### F.3 Dynamic Array Memory Layout
 
