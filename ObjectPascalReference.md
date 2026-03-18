@@ -3947,7 +3947,7 @@ These are built into the compiler and cannot be reassigned or referenced as proc
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `Ord(X)` | `Ord(X: ordinal): Integer` | Ordinal value |
-| `Chr(X)` | `Chr(X: Byte): AnsiChar` | Character from ordinal |
+| `Chr(X)` | `Chr(X: Integer): Char` | Character from ordinal |
 | `Pred(X)` | `Pred(X: ordinal): ordinal` | Predecessor |
 | `Succ(X)` | `Succ(X: ordinal): ordinal` | Successor |
 | `High(X)` | `High(X): ordinal` | Highest value |
@@ -4608,8 +4608,8 @@ The null terminator is not included in `Length`. The pointer stored in the strin
 2. `_InitExe` (or `_InitLib` for DLLs) is called.
 3. The memory manager is initialized.
 4. Exception handling support is initialized.
-5. `System` unit initialization runs.
-6. `SysInit` unit initialization runs.
+5. `SysInit` unit initialization runs.
+6. `System` unit initialization runs.
 7. Unit initialization sections execute in dependency order (depth-first, left-to-right within each `uses` clause).
 8. The program's main `begin..end` block executes.
 
