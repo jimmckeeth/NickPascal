@@ -1056,7 +1056,7 @@ A `type T` declaration creates a **distinct type** that:
 ### 3.11 Type Helpers
 
 ```
-TYPE_HELPER = 'type' 'helper' [ '(' PARENT_HELPER ')' ] 'for' SIMPLE_TYPE
+TYPE_HELPER = 'record' 'helper' [ '(' PARENT_HELPER ')' ] 'for' SIMPLE_TYPE
               { MEMBER_DECLARATION }
               'end' ;
 ```
@@ -2329,7 +2329,7 @@ TObject = class
   function ToString: string; virtual;
   procedure AfterConstruction; virtual;
   procedure BeforeDestruction; virtual;
-  procedure Dispatch(var Message); virtual;
+  procedure Dispatch(var Message);
   procedure DefaultHandler(var Message); virtual;
   class function NewInstance: TObject; virtual;
   procedure FreeInstance; virtual;
@@ -2460,7 +2460,7 @@ INTERFACE_TYPE = 'interface' [ INTERFACE_HERITAGE ] [ '[' GUID ']' ]
                  'end'
                | 'interface' ;   (* forward declaration *)
 
-INTERFACE_HERITAGE = '(' INTF_TYPE_REF { ',' INTF_TYPE_REF } ')' ;
+INTERFACE_HERITAGE = '(' INTF_TYPE_REF ')' ;
 GUID = STRING_LITERAL ;  (* format: '{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}' *)
 
 INTERFACE_MEMBER = PROCEDURE_HEADER ';' [ CALLING_CONV ';' ]
@@ -4259,7 +4259,7 @@ InterfaceType     = ( 'interface' | 'dispinterface' )
                     [ InterfaceHeritage ] [ '[' GUID ']' ]
                     { InterfaceMember } 'end'
                   | 'interface' ;  (* forward *)
-InterfaceHeritage = '(' TypeRef { ',' TypeRef } ')' ;
+InterfaceHeritage = '(' TypeRef ')' ;
 InterfaceMember   = ProcHeader ';' [ CallingConv ';' ]
                   | FuncHeader ';' [ CallingConv ';' ]
                   | PropertyDecl ;
