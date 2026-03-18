@@ -165,13 +165,13 @@ Directive words are context-sensitive: they have special meaning in specific syn
 absolute        dynamic         name            readonly
 abstract        experimental    near            reference
 assembler       export          nodefault       register
-automated       external        overload        reintroduce
-cdecl           far             override        requires
-contains        final           package         resident
-default         forward         pascal          safecall
-delayed         helper          platform        sealed
-deprecated      implements      private         static
-dispid          index           protected       stdcall
+automated       external        noreturn        reintroduce
+cdecl           far             overload        requires
+contains        final           override        resident
+default         forward         package         safecall
+delayed         helper          pascal          sealed
+deprecated      implements      platform        static
+dispid          index           private         stdcall
 ```
 
 ```
@@ -2052,7 +2052,25 @@ Rules:
 2. Recursive routines cannot be inlined.
 3. Routines containing inline assembly cannot be inlined.
 
-### 7.8 Nested Routines
+### 7.8 The `noreturn` Directive
+
+```pascal
+procedure FatalError(const Msg: string); noreturn;
+begin
+  raise EFatalException.Create(Msg);
+end;
+```
+
+The `noreturn` directive declares that a procedure never returns to its caller — it always raises an exception, calls `Halt`, or enters an infinite loop. This enables the compiler to:
+
+1. Eliminate unreachable code after calls to the procedure.
+2. Suppress warnings about uninitialized results in calling code paths.
+
+Rules:
+1. `noreturn` applies only to procedures (not functions, methods, method references, or anonymous methods).
+2. If a `noreturn` procedure does return, behavior is undefined — the compiler may have removed code that follows the call site.
+
+### 7.9 Nested Routines
 
 Procedures and functions may be nested inside other routines:
 
@@ -2069,7 +2087,7 @@ end;
 
 Nested routines can access the local variables and parameters of all enclosing routines. This is implemented via a **frame pointer chain**: each nested routine receives a hidden pointer to the enclosing routine's stack frame.
 
-### 7.9 Routine Directives Summary
+### 7.10 Routine Directives Summary
 
 | Directive      | Meaning                                                    |
 |----------------|------------------------------------------------------------|
@@ -2096,6 +2114,7 @@ Nested routines can access the local variables and parameters of all enclosing r
 | `reintroduce`  | Hides an inherited method (suppresses warning)             |
 | `message`      | Message handler                                            |
 | `final`        | Prevents further overriding                                |
+| `noreturn`     | Procedure never returns to the caller                      |
 
 ---
 
@@ -4466,7 +4485,7 @@ ParamType         = Type | 'array' 'of' Type | 'array' 'of' 'const' ;
 DirectiveList     = Directive { ';' Directive } ;
 Directive         = CallingConv | 'overload' | 'inline' | 'virtual'
                   | 'dynamic' | 'override' | 'abstract' | 'reintroduce'
-                  | 'final' | 'static' | PortabilityDir
+                  | 'final' | 'static' | 'noreturn' | PortabilityDir
                   | 'message' ( IntegerLiteral | StringLiteral | Ident ) ;
 CallingConv       = 'register' | 'cdecl' | 'stdcall' | 'safecall'
                   | 'pascal' | 'winapi' ;
