@@ -162,23 +162,25 @@ Note: `inline` is a reserved word as of Delphi 2005 and later. In older versions
 Directive words are context-sensitive: they have special meaning in specific syntactic contexts but may be used as identifiers elsewhere. A conforming implementation shall recognize the following directives:
 
 ```
-absolute        dynamic         local           platform
-abstract        experimental    message         read
-assembler       export          name            readonly
-automated       external        near            reference
-cdecl           far             nodefault       register
-contains        final           operator        reintroduce
-default         forward         out             requires
-delayed         helper          overload        resident
-deprecated      implements      override        safecall
-dispid          index           package         sealed
+absolute        dynamic         name            readonly
+abstract        experimental    near            reference
+assembler       export          nodefault       register
+automated       external        overload        reintroduce
+cdecl           far             override        requires
+contains        final           package         resident
+default         forward         pascal          safecall
+delayed         helper          platform        sealed
+deprecated      implements      private         static
+dispid          index           protected       stdcall
 ```
 
 ```
-static          stored          varargs         writeonly
-stdcall         strict          virtual         write
-unsafe          winapi
+stored          unsafe          virtual         writeonly
+strict          varargs         winapi          write
+public          published
 ```
+
+Note: Visibility specifiers (`private`, `protected`, `public`, `published`) are directives, not reserved words — they can be used as identifiers outside of class/record declarations, though this is strongly discouraged. The reserved words `on`, `operator`, and `out` (§1.5) are not listed here.
 
 ### 1.7 Numeric Literals
 
@@ -4153,8 +4155,8 @@ deprecated    dispid        dynamic       experimental
 export        external      far           final
 forward       helper        implements    index
 local         message       name          near
-nodefault     on            operator      out
-overload      override      package       pascal
+nodefault     overload      override      package
+pascal
 platform      private       protected     public
 published     read          readonly      reference
 register      reintroduce   requires      resident
