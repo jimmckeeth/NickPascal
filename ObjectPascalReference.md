@@ -1214,6 +1214,28 @@ Rules:
 2. Type inference uses the same rules as `const` inference.
 3. Inline variables of managed types are finalized when they go out of scope.
 
+#### 4.5.4 Inline Constant Declarations (Delphi 10.3+)
+
+Constants may also be declared inline within a `begin..end` block:
+
+```pascal
+begin
+  const MaxRetries = 5;                    // type inferred as Integer
+  const Greeting: string = 'Hello';        // explicit type
+  const Factor = 2.5;                      // type inferred as Extended/Double
+
+  for var I := 1 to MaxRetries do
+    WriteLn(Greeting);
+end;
+```
+
+Rules:
+
+1. The scope of an inline constant extends from its declaration to the end of the innermost enclosing block.
+2. Type inference follows the same rules as traditional constant declarations.
+3. Inline constants are true constants — they cannot be assigned to after declaration.
+4. Inline constants may be used anywhere a constant expression is expected within their scope.
+
 ### 4.6 Thread-Local Variables
 
 ```
@@ -4340,7 +4362,8 @@ CompoundStmt      = 'begin' StmtList 'end' ;
 StmtList          = [ Statement { ';' Statement } ] ;
 
 Statement         = [ Label ':' ] ( SimpleStmt | StructuredStmt )
-                  | InlineVarDecl ;
+                  | InlineVarDecl
+                  | InlineConstDecl ;
 
 SimpleStmt        = Designator ':=' Expression    (* assignment *)
                   | Designator [ '(' ExprList ')' ] (* proc call *)
@@ -4384,6 +4407,7 @@ ExceptHandler     = 'on' [ Ident ':' ] TypeIdent 'do' Statement ;
 AsmStmt           = 'asm' { AsmInstruction } 'end' ;
 
 InlineVarDecl     = 'var' Ident [ ':' Type ] [ ':=' Expression ] ;
+InlineConstDecl   = 'const' Ident [ ':' Type ] '=' Expression ;
 ```
 
 ### C.8 Expressions
