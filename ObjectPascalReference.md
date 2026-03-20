@@ -1,8 +1,8 @@
 # Object Pascal Language Specification
 
-## As Implemented in Embarcadero Delphi (Version 12 Athens and Later)
+## As Implemented in Embarcadero Delphi (Version 13.1 Florence)
 
-### Version 1.0 — March 2026
+### Version 1.1 — March 2026
 
 ---
 
@@ -177,8 +177,9 @@ platform        private         protected       public
 published       read            readonly        reference
 register        reintroduce     requires        resident
 safecall        sealed          static          stdcall
-stored          strict          unsafe          varargs
-virtual         winapi          write           writeonly
+stored          strict          unmanaged       unsafe
+varargs         virtual         winapi          write
+writeonly
 ```
 
 Notes:
@@ -1439,7 +1440,8 @@ Declarations may be annotated with portability directives:
 An expression computes a value. Expressions are composed of **operands** (literals, constants, variables, function calls) combined with **operators**.
 
 ```
-EXPRESSION = SIMPLE_EXPR [ REL_OP SIMPLE_EXPR ] ;
+EXPRESSION = CONDITIONAL_EXPR | SIMPLE_EXPR [ REL_OP SIMPLE_EXPR ] ;
+CONDITIONAL_EXPR = 'if' EXPRESSION 'then' EXPRESSION 'else' EXPRESSION ;
 SIMPLE_EXPR = [ '+' | '-' ] TERM { ADD_OP TERM } ;
 TERM = FACTOR { MUL_OP FACTOR } ;
 FACTOR = DESIGNATOR [ '(' EXPR_LIST ')' ]
@@ -1463,9 +1465,10 @@ Operators are listed from highest to lowest precedence:
 | 1 (highest)| `@`, `not`, unary `+`, unary `-` | Unary               |
 | 2          | `*`, `/`, `div`, `mod`, `and`, `shl`, `shr`, `as` | Multiplicative |
 | 3          | `+`, `-`, `or`, `xor`           | Additive            |
-| 4 (lowest) | `=`, `<>`, `<`, `>`, `<=`, `>=`, `in`, `is`, `not in`, `is not` | Relational |
+| 4          | `=`, `<>`, `<`, `>`, `<=`, `>=`, `in`, `is`, `not in`, `is not` | Relational |
+| 5 (lowest) | `if`...`then`...`else`           | Conditional (Delphi 13+) |
 
-All binary operators at the same precedence level are **left-associative**.
+All binary operators at the same precedence level are **left-associative**. The conditional operator is **right-associative** (nested `if`...`then`...`else` chains associate from right to left).
 
 **Important:** Unlike C-family languages, `and` and `or` have **higher** precedence than relational operators. This means:
 
@@ -1627,6 +1630,52 @@ var Intf := Obj as IMyInterface;
 ```
 
 This calls `QueryInterface` internally and raises `EIntfCastError` on failure.
+
+### 5.8.3 The Conditional Operator (Delphi 13+)
+
+The **conditional operator** (also called the ternary operator) evaluates a boolean condition and returns one of two values:
+
+```pascal
+var X := if Condition then Value1 else Value2;
+```
+
+This is an **expression**, not a statement — it produces a value and can appear anywhere an expression is expected:
+
+```pascal
+ShowMessage(if Score >= 60 then 'Pass' else 'Fail');
+
+var Discount := if IsMember then 0.20 else 0.0;
+
+DoSomething(A, if Flag then B else C, D);
+```
+
+Rules:
+
+1. The condition must be a `Boolean` expression.
+2. Both branches must yield **type-compatible** values. If the types differ and no implicit conversion exists, the compiler reports an incompatible types error.
+3. **Short-circuit evaluation** applies: only the selected branch is evaluated. This distinguishes the operator from `IfThen()` functions (which evaluate both arguments before calling).
+4. The conditional operator has **lower precedence** than all arithmetic and relational operators. Use parentheses when embedding it in larger expressions:
+
+```pascal
+// Without parentheses, '+' binds tighter than else:
+//   if X > 0 then 'Pos' else 'Neg' + '!'
+// is parsed as:
+//   if X > 0 then 'Pos' else ('Neg' + '!')
+
+// Use parentheses for the intended grouping:
+var S := (if X > 0 then 'Pos' else 'Neg') + '!';
+```
+
+5. Conditional operators may be **nested**:
+
+```pascal
+var Grade := if Score >= 90 then 'A'
+             else if Score >= 80 then 'B'
+             else if Score >= 70 then 'C'
+             else 'F';
+```
+
+6. The `if` keyword serves as both a statement keyword and an operator keyword. The compiler disambiguates by syntactic position: when `if` appears where an expression is expected (right-hand side of assignment, function argument, etc.), it is parsed as the conditional operator.
 
 ### 5.9 The Address-of Operator (`@`)
 
@@ -3080,6 +3129,27 @@ Rules:
 4. If `Assign` is not defined, the compiler generates a default assignment: it first finalizes the destination's managed sub-fields (decrementing reference counts), copies the raw bytes, and then increments reference counts for the source's managed sub-fields.
 5. Managed records incur overhead: the compiler inserts `Initialize`/`Finalize` calls around every scope where such a record exists.
 
+#### 10.6.1 Implicit Self Parameter (Delphi 13+)
+
+Starting with Delphi 13, the `Initialize`, `Finalize`, and `Assign` operators may omit the explicit parameter declaration. The compiler implicitly provides `Self` as the record instance:
+
+```pascal
+type
+  TManagedRec = record
+    Data: Pointer;
+    class operator Initialize;   // implicit out Self: TManagedRec
+    class operator Finalize;     // implicit var Self: TManagedRec
+    class operator Assign;       // implicit var Dest, const [ref] Src
+  end;
+
+class operator TManagedRec.Initialize;
+begin
+  Self.Data := nil;  // Self is available implicitly
+end;
+```
+
+The explicit parameter form remains valid. Both forms produce identical behavior and compiled code.
+
 ---
 
 ## Chapter 11: Generics
@@ -3098,6 +3168,8 @@ CONSTRAINT_LIST   = CONSTRAINT { ',' CONSTRAINT } ;
 CONSTRAINT        = 'class'
                   | 'record'
                   | 'constructor'
+                  | 'interface'
+                  | 'unmanaged'
                   | INTERFACE_TYPE
                   | CLASS_TYPE ;
 ```
@@ -3151,6 +3223,8 @@ Constraints restrict what types may be used as type arguments:
 | `class`         | T must be a class type (reference type)                 |
 | `record`        | T must be a value type (record, not a class)            |
 | `constructor`   | T must have a parameterless constructor                  |
+| `interface`     | T must be an interface type (Delphi 13+)                |
+| `unmanaged`     | T must be a value type without managed fields (Delphi 13+) |
 | `IInterface`    | T must implement the specified interface                  |
 | `TBaseClass`    | T must be the specified class or a descendant            |
 
@@ -3186,8 +3260,19 @@ With the `constructor` constraint:
 - `T.Create` (parameterless constructor call)
 
 With the `record` constraint:
-- The type parameter is guaranteed to be a value type
+- The type parameter is guaranteed to be a value type (may include managed fields such as strings or dynamic arrays)
 - No nil comparison allowed
+
+With the `unmanaged` constraint (Delphi 13+):
+- Like `record`, the type parameter must be a value type
+- Additionally, the type must not contain managed fields (no strings, dynamic arrays, interfaces, or Variants)
+- Enables L-value casts on generic type variables, which is not safe with managed types
+- The `unmanaged` constraint is a stricter subset of the `record` constraint
+
+With the `interface` constraint (Delphi 13+):
+- The type parameter must be an interface type
+- Comparison with `nil` is allowed
+- Access to `IInterface` members (`QueryInterface`, `_AddRef`, `_Release`) is available
 
 ### 11.4 Generic Methods
 
@@ -3872,6 +3957,7 @@ end;
 |----------|-----------------|
 | Win32    | x86 (IA-32) with SSE/SSE2/AVX extensions |
 | Win64    | x86-64 (AMD64) |
+| Win64 Arm | ARM64 (Arm64EC) (Delphi 13.1+) |
 | Linux64  | x86-64 |
 | macOS64  | x86-64 or ARM64 (Apple Silicon) |
 | Android  | ARM32 (ARMV7) or ARM64 (AArch64) |
@@ -3997,6 +4083,27 @@ Directives fall into three categories:
 | `{$MINSTACKSIZE size}` | Minimum stack size |
 | `{$MAXSTACKSIZE size}` | Maximum stack size |
 | `{$SETPEFLAGS flags}` | PE header flags |
+| `{$PUSHOPT}` | Save current compiler options (Delphi 13+) |
+| `{$POPOPT}` | Restore previously saved compiler options (Delphi 13+) |
+
+#### 17.3.1 The `{$PUSHOPT}` and `{$POPOPT}` Directives (Delphi 13+)
+
+`{$PUSHOPT}` saves a snapshot of the current compiler switch settings onto an internal stack. `{$POPOPT}` restores the most recently saved snapshot:
+
+```pascal
+{$PUSHOPT}
+{$R+}
+{$Q+}
+  // Range and overflow checking enabled here
+  ProcessUntrustedInput(Data);
+{$POPOPT}
+// Original settings restored
+```
+
+Rules:
+1. `{$PUSHOPT}` and `{$POPOPT}` calls must be balanced within a source file. The compiler emits a warning if there are more `{$PUSHOPT}` than `{$POPOPT}` at the end of a file.
+2. Not all compiler options are eligible — consult the implementation documentation for the specific list of options saved and restored.
+3. These directives are analogous to `#pragma option push` / `#pragma option pop` in C/C++.
 
 ### 17.4 Conditional Compilation
 
@@ -4021,27 +4128,27 @@ Directives fall into three categories:
 | `IOS` | Compiling for iOS |
 | `POSIX` | Compiling for POSIX (Linux, macOS, Android, iOS) |
 | `WIN32` | 32-bit Windows target |
-| `WIN64` | 64-bit Windows target |
+| `WIN64` | 64-bit Windows target (x64 or Arm) |
 | `CPUX86` | x86 (32-bit) target |
 | `CPUX64` | x86-64 (64-bit) target |
 | `CPUARM` | ARM (32-bit) target |
-| `CPUARM64` | ARM64 target |
+| `CPUARM64` | ARM64 target (includes Win64 Arm, macOS, iOS, Android) |
 | `CPU32BITS` | 32-bit CPU |
 | `CPU64BITS` | 64-bit CPU |
 | `UNICODE` | `Char` is `WideChar` (always true in modern Delphi) |
 | `CONSOLE` | Console application |
 | `DEBUG` | Debug configuration |
 | `RELEASE` | Release configuration |
-| `VERxxx` | Compiler version (e.g., `VER360` for Delphi 12) |
-| `CompilerVersion` | Compiler version as float (e.g., 36.0) |
+| `VERxxx` | Compiler version (e.g., `VER370` for Delphi 13, `VER360` for Delphi 12) |
+| `CompilerVersion` | Compiler version as float (e.g., 37.0 for Delphi 13) |
 
 #### 17.4.2 Conditional Expressions (`{$IF}`)
 
 `{$IF}` supports full constant expressions:
 
 ```pascal
-{$IF CompilerVersion >= 36.0}
-  // Delphi 12+ code
+{$IF CompilerVersion >= 37.0}
+  // Delphi 13+ code
 {$ENDIF}
 
 {$IF Defined(MSWINDOWS) and not Defined(WIN64)}
@@ -4109,6 +4216,12 @@ On **Win64** (Microsoft x64 ABI — used regardless of calling convention keywor
 - Remaining on the stack
 - 32-byte "shadow space" reserved by caller
 - Result in `RAX` or `XMM0`
+
+On **Win64 Arm** (Arm64EC ABI — Delphi 13.1+):
+- Uses the Arm64EC (Emulation Compatible) calling convention, enabling native ARM64 code to interoperate with x64 emulated code on Windows on Arm devices
+- Parameter passing follows the standard Windows ARM64 ABI: first eight integer/pointer params in `X0`-`X7`, first eight float/SIMD params in `V0`-`V7`
+- Result in `X0` or `V0`
+- Built on LLVM 20 infrastructure with Microsoft UCRT runtime
 
 #### 18.1.2 SafeCall Convention
 
@@ -4455,14 +4568,14 @@ deprecated    dispid        dynamic       experimental
 export        external      far           final
 forward       helper        implements    index
 local         message       name          near
-nodefault     overload      override      package
-pascal
-platform      private       protected     public
-published     read          readonly      reference
-register      reintroduce   requires      resident
-safecall      sealed        static        stdcall
-stored        strict        unsafe        varargs
-virtual       winapi        write         writeonly
+nodefault     noreturn      overload      override
+package       pascal        platform      private
+protected     public        published     read
+readonly      reference     register      reintroduce
+requires      resident      safecall      sealed
+static        stdcall       stored        strict
+unmanaged     unsafe        varargs       virtual
+winapi        write         writeonly
 ```
 
 ---
@@ -4474,9 +4587,10 @@ virtual       winapi        write         writeonly
 | 1 (highest)| Unary          | `@`, `not`, unary `+`, unary `-`                    |
 | 2          | Multiplicative | `*`, `/`, `div`, `mod`, `and`, `shl`, `shr`, `as`  |
 | 3          | Additive       | `+`, `-`, `or`, `xor`                               |
-| 4 (lowest) | Relational     | `=`, `<>`, `<`, `>`, `<=`, `>=`, `in`, `is`, `not in`, `is not` |
+| 4          | Relational     | `=`, `<>`, `<`, `>`, `<=`, `>=`, `in`, `is`, `not in`, `is not` |
+| 5 (lowest) | Conditional    | `if`...`then`...`else` (Delphi 13+)                 |
 
-All binary operators are left-associative. Parentheses override precedence.
+All binary operators are left-associative. The conditional operator is right-associative. Parentheses override precedence.
 
 ---
 
@@ -4656,7 +4770,8 @@ ExportsEntry      = Ident [ FormalParams ]
 GenericParams     = '<' TypeParam { ',' TypeParam } '>' ;
 TypeParam         = Ident [ ':' ConstraintList ] ;
 ConstraintList    = Constraint { ',' Constraint } ;
-Constraint        = 'class' | 'record' | 'constructor' | TypeIdent ;
+Constraint        = 'class' | 'record' | 'constructor'
+                  | 'interface' | 'unmanaged' | TypeIdent ;
 
 GenericInstantiation = QualifiedIdent '<' Type { ',' Type } '>' ;
 ```
@@ -4734,7 +4849,9 @@ InlineConstDecl   = 'const' Ident [ ':' Type ] '=' Expression ;
 ### C.8 Expressions
 
 ```ebnf
-Expression        = SimpleExpr [ RelOp SimpleExpr ] ;
+Expression        = ConditionalExpr
+                  | SimpleExpr [ RelOp SimpleExpr ] ;
+ConditionalExpr   = 'if' Expression 'then' Expression 'else' Expression ;
 SimpleExpr        = [ '+' | '-' ] Term { AddOp Term } ;
 Term              = Factor { MulOp Factor } ;
 Factor            = Designator [ '(' ExprList ')' ]
@@ -4936,7 +5053,7 @@ The VMT pointer points to the first virtual method entry. Negative offsets conta
 | -4  | `vmtDestroy` | `Destroy` virtual method |
 | 0+  | User virtual method pointers | Code pointers |
 
-(Exact offsets are platform-dependent; shown for Win32/Delphi 12 Athens. On Win64, entries that are pointers or `NativeInt` values occupy 8 bytes instead of 4, so the total size of the negative-offset metadata region differs from a simple doubling of Win32 offsets. Consult the `System` unit source for the actual `vmt*` constants on each target platform.)
+(Exact offsets are platform-dependent; shown for Win32/Delphi 13.1 Florence. On Win64, entries that are pointers or `NativeInt` values occupy 8 bytes instead of 4, so the total size of the negative-offset metadata region differs from a simple doubling of Win32 offsets. Consult the `System` unit source for the actual `vmt*` constants on each target platform.)
 
 ### F.3 Dynamic Array Memory Layout
 

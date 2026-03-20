@@ -10,7 +10,7 @@
           |__/    Language Specification
 ```
 
-> **A complete, compiler-implementable language specification for Object Pascal as implemented in Embarcadero Delphi 12+.**
+> **A complete, compiler-implementable language specification for Object Pascal as implemented in Embarcadero Delphi 13.1 Florence.**
 
 ---
 
@@ -52,7 +52,7 @@ Plus **7 appendices** including a full consolidated **EBNF grammar**, operator p
 - **23,000+ words** of precise technical detail
 - **19 chapters** + **7 appendices**
 - **Full EBNF grammar** ready for parser generation
-- Covers **Delphi 12 Athens** and modern language features
+- Covers **Delphi 13.1 Florence** and modern language features
 
 ## Who Is This For?
 
@@ -77,6 +77,37 @@ Because every great language deserves a spec with someone's name on it. Niklaus 
 ## Contributing
 
 Found an inaccuracy? A missing edge case? A compiler directive from 1998 that still haunts your dreams? Open an issue or submit a PR.
+
+### AI-Assisted Review
+
+You can use an AI coding assistant (Claude Code, Cursor, etc.) to review the specification and contribute. Clone the repo, then use this prompt:
+
+```
+Review the file ObjectPascalReference.md against the official Embarcadero Delphi
+documentation and your knowledge of Object Pascal. For each finding, categorize
+it as one of:
+
+- **Correction**: Something that is stated incorrectly
+- **Omission**: An important language feature, rule, or caveat that is missing
+- **Clarification**: Something that is technically correct but unclear or
+  incomplete enough to mislead
+
+For each finding, note the section number, quote the relevant text, explain
+the problem, and suggest a fix.
+
+When you are done, do the following for each finding:
+
+1. Create a GitHub issue titled "[Category] §Section — Short description"
+   with the section reference, current text, problem description, and
+   suggested fix in the body.
+2. Create a feature branch, apply the fix to ObjectPascalReference.md, and
+   open a Pull Request that references the issue.
+
+Filter out false positives — only report findings you are confident about.
+When in doubt, check the Embarcadero DocWiki or RAD Studio documentation.
+```
+
+This is how this specification is maintained: AI reviews the document, opens issues for each finding, and submits PRs with fixes. Human reviewers approve or refine.
 
 ## License
 
