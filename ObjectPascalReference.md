@@ -2488,6 +2488,11 @@ property Name: string read FName write SetName;
 - **`read`** specifier: a field name or getter method. If omitted, the property is **write-only** (uncommon; reading the property is a compile-time error).
 - **`write`** specifier: a field name or setter method. If omitted, the property is **read-only** (assignment is a compile-time error).
 
+**Field vs method backing.** A property specifier may name either a field or a method:
+
+- **Field-backed** (`read FName`): the compiler generates a direct memory access -- no method call overhead. Use field backing when no validation, notification, or computation is needed.
+- **Method-backed** (`read GetName`): the compiler generates a method call. Use method backing when the getter/setter must validate input, fire events, compute derived values, or enforce invariants.
+
 Getter signature: `function GetX: T;` (no extra params) or a field `FX: T`.
 
 Setter signature: `procedure SetX(const Value: T);` or `procedure SetX(Value: T);`.
@@ -2530,8 +2535,12 @@ procedure SetColor(Index: Integer; Value: Byte);
 These control **streaming** (persistence via `TReader`/`TWriter`):
 
 - **`stored`** — determines whether the property is saved during streaming. Can be `True`, `False`, or a Boolean field/method name.
-- **`default Value`** — specifies a default value. During streaming, the property is only saved if its current value differs from the default.
-- **`nodefault`** — removes an inherited default value.
+- **`default Value`** — specifies a default value. During streaming, the property is only saved if its current value differs from the default. Only ordinal and set types support `default`; floating-point, string, and class types cannot have a `default` specifier.
+- **`nodefault`** — removes an inherited default value, forcing the streaming system to always write the property regardless of its current value.
+
+**Default value inheritance.** When a descendant re-declares an inherited property, the ancestor's `default` value carries forward unless the descendant explicitly specifies a new `default` or `nodefault`. This means changing a default in an ancestor automatically affects all descendants that do not override it.
+
+**Published properties and streaming.** Properties declared in a `published` section (in a class compiled with `{$M+}` or descending from `TPersistent`) are visible to the RTTI-based streaming system. At design time and when reading `.dfm`/`.fmx` files, `TReader` uses RTTI to discover published properties and set their values. Only published properties participate in streaming; `public` properties do not. The `stored` and `default` specifiers control whether `TWriter` writes a given property to the stream.
 
 #### 8.10.6 The `implements` Directive
 
