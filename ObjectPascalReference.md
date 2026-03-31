@@ -860,7 +860,7 @@ Operations:
 | `Length(A)` | Number of elements |
 | `Low(A)` | Always 0 |
 | `High(A)` | `Length(A) - 1` (-1 if empty) |
-| `A + B` | Array concatenation (Delphi 10.4+) |
+| `A + B` | Array concatenation (Delphi XE7+) |
 | `Copy(A, I, N)` | Shallow copy of N elements starting at I |
 | `Insert(Elem, A, I)` | Insert element at position I |
 | `Delete(A, I, N)` | Delete N elements starting at I |
@@ -2224,7 +2224,7 @@ The `noreturn` directive declares that a procedure never returns to its caller �
 2. Suppress warnings about uninitialized results in calling code paths.
 
 Rules:
-1. `noreturn` applies only to procedures (not functions, methods, method references, or anonymous methods).
+1. `noreturn` applies to procedures and procedure-type class methods (not functions, method references, or anonymous methods).
 2. If a `noreturn` procedure does return, behavior is undefined — the compiler may have removed code that follows the call site.
 
 ### 7.9 Nested Routines
@@ -2760,7 +2760,7 @@ Rules:
 4. Helpers can access `private` and `protected` members of the helped class (within the same unit).
 5. A class helper applies to the helped class **and all its descendants**. A helper for `TObject` is active on `TButton` — but is superseded by any helper for a closer ancestor (e.g., `TControl`) when both are in scope. The compiler picks the helper for the nearest class in the inheritance chain.
 6. Class helpers can inherit from other class helpers via the parent clause: `TMyHelper = class helper(TBaseHelper) for TFoo`. The one-helper-per-class rule still applies.
-7. If the helped class already defines a member with the same name, the class's own member takes precedence over the helper's member.
+7. A class helper's methods and properties take **precedence over** the helped class's own members. If the helped class defines a member with the same name, the helper's member hides it. The original member can still be accessed via a type cast.
 
 ### 8.16 Nested Types and Constants
 
@@ -4239,7 +4239,7 @@ Available functions in `{$IF}` expressions:
 {$ENDIF}
 
 {$IFOPT O-}
-  // Overflow checking is disabled
+  // Optimization is disabled
 {$ENDIF}
 ```
 
@@ -4942,7 +4942,7 @@ AnonymousMethod   = ( 'procedure' | 'function' ) [ FormalParams ] [ ':' Type ]
 ExprList          = Expression { ',' Expression } ;
 
 RelOp             = '=' | '<>' | '<' | '>' | '<=' | '>='
-                  | 'in' | 'is' ;
+                  | 'in' | 'is' | 'not' 'in' | 'is' 'not' ;
 AddOp             = '+' | '-' | 'or' | 'xor' ;
 MulOp             = '*' | '/' | 'div' | 'mod' | 'and' | 'shl' | 'shr'
                   | 'as' ;
