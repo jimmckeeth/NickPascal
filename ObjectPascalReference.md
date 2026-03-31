@@ -1183,7 +1183,7 @@ When performing operations on variants, the compiler inserts runtime conversion 
 5. If either operand is `Int64`, the other is converted to `Int64`.
 6. Otherwise, both are converted to `Integer` (if they fit) or `Int64`.
 
-Assigning a `Variant` to a typed variable performs an implicit conversion. If the conversion is not possible, `EVariantTypeCastError` is raised.
+Assigning a `Variant` to a typed variable performs an implicit conversion. If the conversion is not possible, `EVariantError` is raised.
 
 Special values:
 
@@ -2279,7 +2279,7 @@ Nested routines can access the local variables and parameters of all enclosing r
 | `stdcall`      | Standard call (Win32 API)                                  |
 | `safecall`     | Safecall (COM, with HRESULT wrapping)                      |
 | `pascal`       | Pascal calling convention (legacy)                         |
-| `winapi`       | Platform's native API convention (stdcall on Win32, cdecl on Win64) |
+| `winapi`       | Platform's native API convention (stdcall on Win32, Microsoft x64 ABI on Win64, cdecl on POSIX) |
 | `varargs`      | C-style variadic arguments (with `cdecl`)                  |
 | `static`       | Class method that doesn't receive Self                     |
 | `virtual`      | Virtual dispatch                                           |
@@ -2761,7 +2761,7 @@ CLASS_HELPER = 'class' 'helper' [ '(' PARENT_HELPER ')' ] 'for' CLASS_TYPE
 
 ```pascal
 type
-  TStringHelper = class helper for TObject
+  TObjectHelper = class helper for TObject
     procedure Log;
   end;
 ```
@@ -2981,7 +2981,7 @@ begin
 end;
 ```
 
-Or inherit from `TSingletonImplementation` which provides this behavior. (Note: `TAggregatedObject` is a different pattern — it delegates `_AddRef`/`_Release` to a controlling outer object for COM aggregation, rather than disabling reference counting.)
+Or inherit from `TNoRefCountObject` (Delphi 10.1+, declared in `System`) which provides this behavior. (Note: `TAggregatedObject` is a different pattern — it delegates `_AddRef`/`_Release` to a controlling outer object for COM aggregation, rather than disabling reference counting.)
 
 ### 9.6 Interface Delegation (`implements`)
 
@@ -4270,7 +4270,7 @@ A **calling convention** determines how parameters are passed, how the stack is 
 | StdCall    | `stdcall`  | Right-to-left on stack                   | Callee        | Win32 API                    |
 | SafeCall   | `safecall` | Like stdcall, wraps in HRESULT           | Callee        | COM methods                  |
 | Pascal     | `pascal`   | Left-to-right on stack                   | Callee        | Legacy (Turbo Pascal)        |
-| WinAPI     | `winapi`   | `stdcall` on Win32, `cdecl` on Win64     | Platform      | Cross-platform API calls     |
+| WinAPI     | `winapi`   | `stdcall` on Win32, Microsoft x64 ABI on Win64, `cdecl` on POSIX | Platform      | Cross-platform API calls     |
 
 #### 18.1.1 Register Convention (Default)
 
@@ -4951,8 +4951,8 @@ DesignatorPart    = '.' Ident | '[' ExprList ']' | '^'
 SetConstructor    = '[' [ SetElement { ',' SetElement } ] ']' ;
 SetElement        = Expression [ '..' Expression ] ;
 
-AnonymousMethod   = ( 'procedure' | 'function' ) [ FormalParams ] [ ':' Type ]
-                    'begin' StmtList 'end' ;
+AnonymousMethod   = 'procedure' [ FormalParams ] Block
+                  | 'function' [ FormalParams ] ':' Type Block ;
 
 ExprList          = Expression { ',' Expression } ;
 
