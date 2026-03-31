@@ -2600,7 +2600,7 @@ procedure SetColor(Index: Integer; Value: Byte);
 These control **streaming** (persistence via `TReader`/`TWriter`):
 
 - **`stored`** — determines whether the property is saved during streaming. Can be `True`, `False`, or a Boolean field/method name.
-- **`default Value`** — specifies a default value. During streaming, the property is only saved if its current value differs from the default. Only ordinal and set types support `default`; floating-point, string, and class types cannot have a `default` specifier.
+- **`default Value`** — specifies a default value. During streaming, the property is only saved if its current value differs from the default. Only ordinal, pointer, and small set types (sets whose base type has ordinal values between 0 and 31) support `default`; floating-point, string, `Int64`, and class types cannot have a `default` specifier.
 - **`nodefault`** — removes an inherited default value, forcing the streaming system to always write the property regardless of its current value.
 
 **Default value inheritance.** When a descendant re-declares an inherited property, the ancestor's `default` value carries forward unless the descendant explicitly specifies a new `default` or `nodefault`. This means changing a default in an ancestor automatically affects all descendants that do not override it.
@@ -2640,16 +2640,9 @@ type
 
 Events enable the observer pattern: the object calls the assigned method (if not `nil`) when the event occurs.
 
-### 8.12 Operators (Class Operator Overloading)
+### 8.12 Operators (Record Operator Overloading)
 
-Classes can overload operators (though this is more common for records — see [Chapter 10](#chapter-10-advanced-records)):
-
-```pascal
-class operator Implicit(const A: TMyClass): string;
-class operator Explicit(const A: TMyClass): Integer;
-```
-
-See [§10.4](#104-operator-overloading) for the full list of overloadable operators.
+On desktop/server compilers (Win32, Win64, Linux, macOS), operator overloading is supported **only for records**, not for classes. (Class operator overloading existed on the now-retired mobile ARC compilers and Delphi for .NET, but is not available on any current desktop target.) See [§10.4](#104-operator-overloading) for the full list of overloadable operators and examples.
 
 ### 8.13 TObject — The Root Class
 
@@ -2668,10 +2661,12 @@ TObject = class
   class function ClassInfo: Pointer;
   class function InstanceSize: Integer;
   class function InheritsFrom(AClass: TClass): Boolean;
-  class function MethodAddress(const Name: ShortString): Pointer;
+  class function MethodAddress(const Name: ShortString): Pointer; overload;
+  class function MethodAddress(const Name: string): Pointer; overload;
   class function MethodName(Address: Pointer): string;
   class function QualifiedClassName: string;
-  function FieldAddress(const Name: ShortString): Pointer;
+  function FieldAddress(const Name: ShortString): Pointer; overload;
+  function FieldAddress(const Name: string): Pointer; overload;
   function GetInterface(const IID: TGUID; out Obj): Boolean;
   class function GetInterfaceEntry(const IID: TGUID): PInterfaceEntry;
   class function GetInterfaceTable: PInterfaceTable;
@@ -3074,7 +3069,7 @@ Records may have instance methods and class/static methods. Instance methods rec
 
 ### 10.4 Operator Overloading
 
-Records (and classes) can overload operators using the `class operator` syntax:
+Records can overload operators using the `class operator` syntax:
 
 ```pascal
 class operator Add(const A, B: TMyType): TMyType;
@@ -3163,7 +3158,7 @@ Rules:
 
 #### 10.6.1 Implicit Self Parameter (Delphi 13+)
 
-Starting with Delphi 13, the `Initialize`, `Finalize`, and `Assign` operators may omit the explicit parameter declaration. The compiler implicitly provides `Self` as the record instance:
+Starting with Delphi 13, the `Initialize` and `Finalize` operators may omit the explicit parameter declaration. The compiler implicitly provides `Self` as the record instance. (`Assign` still requires explicit parameters because it takes two operands — `var Dest` and `const [ref] Src`.)
 
 ```pascal
 type
@@ -3171,7 +3166,7 @@ type
     Data: Pointer;
     class operator Initialize;   // implicit out Self: TManagedRec
     class operator Finalize;     // implicit var Self: TManagedRec
-    class operator Assign;       // implicit var Dest, const [ref] Src
+    class operator Assign(var Dest: TManagedRec; const [ref] Src: TManagedRec);
   end;
 
 class operator TManagedRec.Initialize;
@@ -3180,7 +3175,7 @@ begin
 end;
 ```
 
-The explicit parameter form remains valid. Both forms produce identical behavior and compiled code.
+The explicit parameter form of `Initialize` and `Finalize` remains valid. Both forms produce identical behavior and compiled code.
 
 ---
 
@@ -3743,7 +3738,7 @@ The following types are **reference-counted** with **copy-on-write** (COW):
 | `AnsiString` | Yes | Yes |
 | Dynamic arrays | Yes | No (shared reference on assign) |
 | Interfaces | Yes | No (shared, not COW) |
-| `Variant` | By value (deep copy on assign) | N/A |
+| `Variant` | No (managed; deep copy on assign) | N/A |
 
 Reference counts are managed atomically (thread-safe increment/decrement).
 
