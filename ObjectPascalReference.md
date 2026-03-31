@@ -139,28 +139,28 @@ Reserved words have fixed meaning in the language and cannot be used as identifi
 
 ```
 and          array        as           asm
-begin        case         class        const
-constructor  destructor   dispinterface div
-do           downto       else         end
-except       exports      file         finalization
-finally      for          function     goto
-if           implementation in         inherited
-initialization inline     interface    is
-label        library      mod          nil
-not          object       of           on
-or           packed       procedure    program
-property     raise        record       repeat
-resourcestring set        shl          shr
-string       then         threadvar    to
-try          type         unit         until
-uses         var          while        with
-xor
+at           begin        case         class
+const        constructor  destructor   dispinterface
+div          do           downto       else
+end          except       exports      file
+finalization finally      for          function
+goto         if           implementation in
+inherited    initialization inline     interface
+is           label        library      mod
+nil          not          object       of
+on           or           packed       procedure
+program      property     raise        record
+repeat       resourcestring set        shl
+shr          string       then         threadvar
+to           try          type         unit
+until        uses         var          while
+with         xor
 ```
 
 Notes:
 - `inline` is a reserved word as of Delphi 2005 and later. In older versions it was a directive.
-- `operator` and `out` have been reclassified as directive/contextual keywords ([§1.6](#16-directive-words)) -- they have special meaning only in operator overloading declarations and parameter modifiers respectively, and may be used as identifiers elsewhere.
-- `on` and `at` are context-sensitive reserved words: `on` has special meaning only inside `except` handler syntax; `at` only in `raise` statements.
+- `operator` and `out` are directive/contextual keywords ([§1.6](#16-directive-words)) — they have special meaning only in operator overloading declarations and parameter modifiers respectively, and may be used as identifiers elsewhere.
+- `on` and `at` are context-sensitive reserved words: `on` has special meaning only inside `except` handler syntax; `at` only in `raise` statements. They cannot be used as identifiers without the `&` prefix.
 
 ### 1.6 Directive Words
 
@@ -681,7 +681,7 @@ The following intrinsic functions operate on all ordinal types:
 | `WordBool`  | 2           | `False` = 0, `True` = nonzero |
 | `LongBool`  | 4           | `False` = 0, `True` = nonzero |
 
-For `Boolean`, the only valid values are 0 (`False`) and 1 (`True`). For `ByteBool`, `WordBool`, and `LongBool`, any nonzero value is `True`, and applying `not` to a `True` value yields `False` (0). These wider boolean types exist for COM/Windows API interoperability.
+For `Boolean`, the only valid values are 0 (`False`) and 1 (`True`), and `not True` yields `False`. For `ByteBool`, `WordBool`, and `LongBool`, any nonzero value is `True`, but `not` performs a **bitwise complement**, not a logical negation. This means `not ByteBool(1)` yields `ByteBool($FE)`, which is still `True` (nonzero). Only when the `True` value has all bits set (e.g., `ByteBool($FF)`, i.e., `-1`) does `not` produce `False` (0). In COM interop, `VARIANT_BOOL` (`WordBool`) uses `-1` for `True` specifically so that `not True = False` holds. These wider boolean types exist for COM/Windows API interoperability.
 
 #### 3.3.4 Enumerated Types
 
@@ -1242,7 +1242,7 @@ Rules:
 3. Helpers can extend any named simple type, record type, class type, or enumerated type.
 4. Helper methods receive `Self` as an implicit parameter (by value for value types, by reference for class types).
 5. Helpers can be chained via inheritance: `TExtendedHelper = record helper(TBaseHelper) for Integer` inherits the base helper's methods. However, the one-helper-per-type rule still applies — if both are in scope, only the descendant is active.
-6. A helper's methods and properties are found **after** the type's own members. If the helped type already has a method `Foo`, the helper's `Foo` is hidden (the type's own member wins).
+6. A helper's methods and properties take **precedence over** the type's own members. If the helped type already has a method `Foo`, the helper's `Foo` hides it (the helper's member wins).
 
 ---
 
@@ -1426,7 +1426,7 @@ Semantics and caveats:
 - **New thread initialization.** Threads created directly via OS APIs (e.g., `CreateThread` on Windows) without going through the Delphi RTL will have their threadvar values zero-initialized but the RTL initialization hooks will not run. Managed-type threadvars may be in an inconsistent state in such threads.
 - **No finalization guarantee.** When a thread exits, Delphi finalizes managed threadvar fields for RTL-managed threads. Threads created outside the RTL may not trigger this cleanup, causing leaks.
 - **Per-thread instance.** Each threadvar is effectively a separate variable per thread; changes in one thread are invisible to all others.
-- Use `TThreadLocal<T>` (from `System.Generics`) as a safer alternative for managed types in multi-threaded code.
+- For managed types in multi-threaded code, prefer `threadvar` with RTL-created threads (which properly handle per-thread initialization and finalization). Third-party libraries such as Spring4D provide a `TThreadLocal<T>` wrapper for additional safety.
 
 ### 4.7 Portability Directives
 
@@ -2736,7 +2736,7 @@ begin
 end;
 ```
 
-**Important:** For polymorphic dispatch through a class reference, the constructor **must** be declared `virtual` (and descendants must use `override`). `TObject.Create` is virtual, so basic examples work by default. However, if a class declares a non-virtual constructor and it is called through a class-reference variable, the base class's constructor executes — not the descendant's — which is almost never the intended behavior in a factory pattern.
+**Important:** For polymorphic dispatch through a class reference, the constructor **must** be declared `virtual` (and descendants must use `override`). `TObject.Create` is **not** virtual, so a base class that participates in a factory pattern must explicitly declare its constructor as `virtual` (as `TAnimal` does above). If a non-virtual constructor is called through a class-reference variable, the class reference's declared type's constructor executes — not the descendant's — which is almost never the intended behavior in a factory pattern.
 
 ### 8.15 Class Helpers
 
@@ -3357,18 +3357,18 @@ Delphi generics use a **code-specialization** model:
 4. The linker may merge identical specializations to reduce code size (implementation-defined).
 
 This means:
-- Errors in the generic body that depend on the type argument are detected at **instantiation time**, not declaration time.
-- The generic body can use operations not visible from constraints if the actual type supports them (but this is unreliable and not recommended).
+- The compiler validates the generic body against the declared constraints at **declaration time**. Operations on `T` that are not guaranteed by the constraints produce a compile-time error at the generic declaration, not at instantiation.
+- At each instantiation point, a specialized copy is created with actual types substituted; additional type-specific errors (e.g., ambiguous overloads) may surface at instantiation time.
 
 ### 11.7 Generic Constraints vs. Duck Typing
 
-Unlike C++ templates, Delphi generics are **constrained**: you can only use operations on `T` that are guaranteed by the constraints. Code that relies on unconstrained operations may compile for some type arguments but fail for others. Best practice is to always specify appropriate constraints.
+Unlike C++ templates, Delphi generics are **constrained**: you can only use operations on `T` that are guaranteed by the constraints. The compiler enforces this at the generic declaration site — not at instantiation — so all type arguments that satisfy the constraints are guaranteed to work. Best practice is to always specify appropriate constraints.
 
 ### 11.7.1 Delphi-Specific Generic Limitations
 
 - **No type inference for generic type instantiations.** Type arguments must be explicit when instantiating a generic type (`TStack<Integer>`). Inference is supported only for generic method calls ([§11.4.1](#1141-type-inference)).
 - **Constraint combinations are additive, not union.** All listed constraints must be satisfied simultaneously: `T: class, constructor` requires a class with a parameterless constructor -- not one or the other.
-- **Instantiation-time errors.** Errors caused by the mismatch between a type argument and operations used in the generic body are reported at the instantiation point, not at the generic declaration. This can produce confusing error messages.
+- **Instantiation-time errors.** While constraint violations are caught at declaration time, certain errors (e.g., ambiguous overloads or incompatible assignments involving the actual type) are reported at the instantiation point. This can produce confusing error messages.
 - **No partial specialization.** Unlike C++, Delphi does not support specializing a generic type for a specific type argument. All instantiations share the same generic body.
 - **No variadic type parameters.** A generic type must have a fixed number of type parameters declared at definition time.
 - **Open generic types cannot be used as type arguments.** `TList<TStack>` (without providing a type argument for `TStack`) is not permitted.
@@ -4600,27 +4600,29 @@ The `System` unit is implicitly used by every unit and program. It is always in 
 
 ## Appendix A: Complete Reserved Words and Directives
 
-### A.1 Reserved Words (67 total)
+### A.1 Reserved Words (66 total)
 
 ```
 and           array         as            asm
-begin         case          class         const
-constructor   destructor    dispinterface div
-do            downto        else          end
-except        exports       file          finalization
-finally       for           function      goto
-if            implementation in           inherited
-initialization inline        interface     is
-label         library       mod           nil
-not           object        of            on
-operator      or            out           packed
-procedure     program       property      raise
-record        repeat        resourcestring set
-shl           shr           string        then
-threadvar     to            try           type
-unit          until         uses          var
-while         with          xor
+at            begin         case          class
+const         constructor   destructor    dispinterface
+div           do            downto        else
+end           except        exports       file
+finalization  finally       for           function
+goto          if            implementation in
+inherited     initialization inline        interface
+is            label         library       mod
+nil           not           object        of
+on            or            packed        procedure
+program       property      raise         record
+repeat        resourcestring set          shl
+shr           string        then          threadvar
+to            try           type          unit
+until         uses          var           while
+with          xor
 ```
+
+Note: `on` and `at` are context-sensitive reserved words (`on` only in `except` handlers; `at` only in `raise` statements), but they cannot be used as identifiers without the `&` prefix. `operator` and `out` are directives ([§A.2](#a2-directives-context-sensitive-70)), not reserved words.
 
 ### A.2 Directives (context-sensitive, 70+)
 
@@ -4631,14 +4633,15 @@ deprecated    dispid        dynamic       experimental
 export        external      far           final
 forward       helper        implements    index
 local         message       name          near
-nodefault     noreturn      overload      override
-package       pascal        platform      private
-protected     public        published     read
-readonly      reference     register      reintroduce
-requires      resident      safecall      sealed
-static        stdcall       stored        strict
-unmanaged     unsafe        varargs       virtual
-winapi        write         writeonly
+nodefault     noreturn      operator      out
+overload      override      package       pascal
+platform      private       protected     public
+published     read          readonly      reference
+register      reintroduce   requires      resident
+safecall      sealed        static        stdcall
+stored        strict        unmanaged     unsafe
+varargs       virtual       winapi        write
+writeonly
 ```
 
 ---
