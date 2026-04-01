@@ -222,10 +222,8 @@ Floating-point literals are of type `Extended` (80-bit on Win32, 64-bit/`Double`
 ### 1.8 String Literals
 
 ```
-STRING_LITERAL   = QUOTED_STRING { CHAR_LITERAL QUOTED_STRING }
-                 | CHAR_LITERAL { QUOTED_STRING CHAR_LITERAL }
-                 | QUOTED_STRING
-                 | CHAR_LITERAL ;
+STRING_LITERAL   = STRING_PART { STRING_PART } ;
+STRING_PART      = QUOTED_STRING | CHAR_LITERAL ;
 
 QUOTED_STRING    = "'" { STRING_CHAR | "''" } "'" ;
 STRING_CHAR      = (* any character except "'" and line terminators *) ;
