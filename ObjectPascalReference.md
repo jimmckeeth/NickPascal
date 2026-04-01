@@ -1778,7 +1778,8 @@ Constant expressions may include:
 - Numeric, string, and boolean literals
 - Previously declared constants
 - Arithmetic, logical, and relational operators
-- Intrinsics: `Ord`, `Chr`, `Pred`, `Succ`, `High`, `Low`, `SizeOf`, `Length` (for static arrays and strings), `Abs`, `Round`, `Trunc`, `Odd`, `Lo`, `Hi`
+- Intrinsics: `Ord`, `Chr`, `Pred`, `Succ`, `High`, `Low`, `SizeOf`, `Length` (for static arrays and strings), `Abs`, `Odd`, `Lo`, `Hi`
+- `Round` and `Trunc` are evaluated by the compiler's constant folder in typed constant declarations and certain other contexts. They are **not** universally valid in all constant expression positions — for example, they cannot appear in case labels, subrange bounds, or property `default` values. Use them only where the compiler explicitly supports constant folding of floating-point results.
 - Typecast of constant values
 - String concatenation
 
