@@ -1290,7 +1290,7 @@ When no type is given, the constant's type is inferred from the expression. A ty
 
 ```pascal
 const
-  Pi = 3.14159265358979;          // inferred as Extended
+  Pi = 3.14159265358979;          // inferred as Extended (= Double on Win64)
   MaxItems: Integer = 100;        // typed constant (see [§4.3.2](#432-typed-constants-initialized-variables))
   AppName = 'MyApp';              // inferred as string
   Flags = [fsReadOnly, fsHidden]; // inferred as set
@@ -4510,7 +4510,7 @@ The following type identifiers are predefined in the `System` unit (always in sc
 | `nil` | (special) | Null pointer/reference |
 | `MaxInt` | `Integer` | 2147483647 |
 | `MaxLongInt` | `LongInt` | 2147483647 |
-| `Pi` | `Extended` | 3.14159265358979323846... |
+| `Pi` | `Extended` | 3.14159265358979323846... (on Win64, `Extended` = `Double`, so precision is limited to ~15 digits) |
 
 ### 19.3 Intrinsic Functions (Compiler Magic)
 
