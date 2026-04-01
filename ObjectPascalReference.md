@@ -2619,7 +2619,14 @@ Getter signature: `function GetX: T;` (no extra params) or a field `FX: T`.
 
 Setter signature: `procedure SetX(const Value: T);` or `procedure SetX(Value: T);`.
 
-Property specifiers are **inherited**: a descendant class may re-declare a property from an ancestor to change only the specifiers (e.g., adding `write` to a read-only inherited property, or changing the backing field/method). The full type and name must match the inherited property.
+Property specifiers are **inherited**: a descendant class may re-declare a property to change its visibility or specifiers without repeating the full declaration. The rules for partial re-declaration are:
+
+- **`read` and `write`**: If omitted in the re-declaration, the inherited accessor carries forward. To change an accessor, specify the new `read` or `write`; the other retains the inherited value. To add a `write` to a previously read-only property, specify only `write`.
+- **`default` and `nodefault`**: If omitted, the inherited `default` value carries forward. Use `nodefault` to explicitly remove an inherited default.
+- **`stored`**: If omitted, the inherited `stored` specifier carries forward.
+- **`index`**: Cannot be changed in a re-declaration; it is always inherited from the original declaration.
+- **Visibility**: Re-declaring a property in a higher-visibility section (e.g., promoting from `protected` to `public`) is the most common reason for re-declaration without changing any specifiers.
+- **Type**: The property type cannot be changed in a re-declaration; it must match the ancestor's type exactly.
 
 #### 8.10.2 Array Properties (Indexed Properties)
 
