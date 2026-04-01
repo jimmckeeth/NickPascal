@@ -2886,7 +2886,9 @@ Offset 4/8: Fields from ancestor classes (in inheritance order, starting from th
 ... fields from this class (in declaration order) ...
 ```
 
-Note: `TObject` itself declares no instance fields. The VMT pointer at offset 0 is the only per-instance data contributed by `TObject`. The first declared fields come from whichever descendant class in the inheritance chain first declares fields.
+Note: `TObject` itself declares no instance fields visible to the programmer. The VMT pointer at offset 0 is the only per-instance data contributed by `TObject`. The first declared fields come from whichever descendant class in the inheritance chain first declares fields.
+
+**Hidden monitor field:** Starting with Delphi 2009, every `TObject` instance carries a hidden pointer-sized field used by `System.TMonitor` for built-in lock support (`TMonitor.Enter`, `TMonitor.Exit`, `TMonitor.Wait`, `TMonitor.Pulse`). This field is allocated lazily — it consumes space only when `TMonitor.Enter` is first called on the instance. The monitor field is not part of `InstanceSize` as reported to user code; it is managed by the RTL behind the scenes. This mechanism enables any object to serve as a synchronization primitive without inheriting from a special base class.
 
 The first field is always a pointer to the **Virtual Method Table**, which in turn contains:
 
