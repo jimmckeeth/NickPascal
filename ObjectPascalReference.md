@@ -1383,6 +1383,20 @@ Rules:
 1. The scope of an inline variable extends from its declaration to the end of the innermost enclosing block.
 2. Type inference uses the same rules as `const` inference.
 3. Inline variables of managed types are finalized when they go out of scope.
+4. **Valid positions**: An inline variable declaration is valid only as a full statement in the statement list of a `begin..end` block. It may **not** appear as the single body of a structured statement. For example:
+   ```pascal
+   // INVALID — inline var cannot be the sole then-branch:
+   if Condition then
+     var X := 5;
+
+   // VALID — inside an explicit begin..end block:
+   if Condition then
+   begin
+     var X := 5;
+     WriteLn(X);
+   end;
+   ```
+   Similarly, inline variables are not valid as the single body of `while`, `repeat`, `for`, or `with` statements. Wrap such constructs in `begin..end` before using inline declarations inside them.
 
 #### 4.5.4 Inline Constant Declarations (Delphi 10.3+)
 
