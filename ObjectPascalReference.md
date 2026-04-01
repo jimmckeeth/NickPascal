@@ -4679,9 +4679,9 @@ until         uses          var           while
 with          xor
 ```
 
-Note: `on` and `at` are context-sensitive reserved words (`on` only in `except` handlers; `at` only in `raise` statements), but they cannot be used as identifiers without the `&` prefix. `operator` and `out` are directives ([§A.2](#a2-directives-context-sensitive-70)), not reserved words.
+Note: `on` and `at` are context-sensitive reserved words (`on` only in `except` handlers; `at` only in `raise` statements), but they cannot be used as identifiers without the `&` prefix. `operator` and `out` are directives ([§A.2](#a2-directives-context-sensitive-59)), not reserved words.
 
-### A.2 Directives (context-sensitive, 70+)
+### A.2 Directives (context-sensitive, 59)
 
 ```
 absolute      abstract      align         assembler     automated
