@@ -2691,6 +2691,8 @@ Events enable the observer pattern: the object calls the assigned method (if not
 
 ### 8.12 Operators (Record Operator Overloading)
 
+> **Note:** This section appears in the Classes chapter for historical reasons, but operator overloading applies exclusively to records on all current platforms. The full treatment is in [§10.4 Operator Overloading](#104-operator-overloading).
+
 On desktop/server compilers (Win32, Win64, Linux, macOS), operator overloading is supported **only for records**, not for classes. (Class operator overloading existed on the now-retired mobile ARC compilers and Delphi for .NET, but is not available on any current desktop target.) See [§10.4](#104-operator-overloading) for the full list of overloadable operators and examples.
 
 ### 8.13 TObject — The Root Class
