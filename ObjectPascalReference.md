@@ -2563,7 +2563,8 @@ inherited Create(Args);       // call inherited constructor
 
 `inherited` without a method name calls the inherited method of the same name, passing the same parameters. `inherited` with a name calls the specified inherited method.
 
-If the current class has no inherited method of that name, `inherited` does nothing (no error) in the no-argument form.
+- **No-argument `inherited`** (bare `inherited;`): If the current class has no inherited method of the same name, `inherited` does nothing — no error is produced. This is the normal behavior for message handlers and other cases where a base class may not have the matching method.
+- **Named `inherited MethodName(Args)`**: If the current class has no ancestor with a method of that name, this is a **compile-time error**. The compiler requires that the named inherited method exists.
 
 ### 8.10 Properties
 
