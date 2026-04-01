@@ -1950,9 +1950,10 @@ Rules:
 2. The initial and final values are evaluated **once** before the loop begins.
 3. `to` increments the control variable; `downto` decrements it.
 4. If the initial value exceeds the final value (for `to`) or is less (for `downto`), the loop body does not execute.
-5. The control variable is **undefined** after the loop terminates normally.
-6. The loop body shall not modify the control variable.
-7. The control variable may be declared inline: `for var I := 0 to 10 do ...` (Delphi 10.3+).
+5. The control variable is **undefined** after the loop terminates normally (i.e., when the limit is reached).
+6. When the loop is exited via `break`, the control variable **retains its current value** at the time of exit. Code may inspect the control variable after a `break` to determine which iteration triggered the exit.
+7. The loop body shall not modify the control variable.
+8. The control variable may be declared inline: `for var I := 0 to 10 do ...` (Delphi 10.3+).
 
 #### 6.7.1 The `for..in` Statement
 
