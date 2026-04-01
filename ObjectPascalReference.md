@@ -3233,7 +3233,15 @@ CONSTRAINT        = 'class'
                   | CLASS_TYPE ;
 ```
 
-#### 11.2.1 Generic Classes
+#### 11.2.0 Lexer Disambiguation for `<` and `>`
+
+The `<` and `>` tokens serve a dual role in Object Pascal: they are both **relational operators** (in expressions) and **generic type parameter delimiters** (in type declarations and instantiations). The compiler disambiguates as follows:
+
+1. **After a declared generic type name** — when `<` immediately follows an identifier that the compiler has already resolved as a declared generic type or generic method, it is treated as the opening angle bracket of a type argument list, not the less-than operator. The compiler completes the generic instantiation by reading type arguments until the matching `>`.
+2. **In all other expression contexts** — `<` and `>` are relational operators, parsed with the usual precedence rules.
+3. **Closing `>>`** — the token sequence `>>` (two consecutive `>` characters) that closes a nested generic instantiation (e.g., `TList<TStack<Integer>>`) is parsed as **two separate closing brackets**, not as the right-shift operator `shr`. The parser tracks generic nesting depth to make this determination.
+
+The disambiguation is entirely context-driven. A parser must maintain a symbol table that records which identifiers are generic types so that it can make the correct choice at the `<` token.
 
 ```pascal
 type
