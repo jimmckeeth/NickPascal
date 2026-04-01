@@ -2004,7 +2004,7 @@ The statement list executes at least once. After each iteration, the expression 
 GOTO_STMT = 'goto' LABEL ;
 ```
 
-Jumps to the labeled statement. The label and the `goto` must be in the same block (procedure/function body). Jumping into or out of `try..finally` or `try..except` blocks is not permitted and results in undefined behavior.
+Jumps to the labeled statement. The label and the `goto` must be in the same block (procedure/function body). Jumping into or out of `try..finally` or `try..except` blocks is a **compile-time error**.
 
 ### 6.11 The `Break` and `Continue` Intrinsics
 
