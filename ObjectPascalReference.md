@@ -4317,6 +4317,8 @@ On **Win32**:
 - Result in `EAX` (ordinal/pointer up to 32 bits), `EAX:EDX` (64-bit), `ST(0)` (float)
 - `Self` counts as the first parameter for methods
 
+> **Hidden result pointer (large return values):** When a function returns a value larger than fits in registers (e.g., a `string`, a `record`, a dynamic array, or any structured type), the compiler inserts a hidden **result pointer** parameter. The caller allocates space for the return value on the stack and passes a pointer to it as an implicit parameter. On Win32 register convention with a large result: `Self` → `EAX`, hidden result pointer → `EDX`, first explicit parameter → `ECX` (then stack). Any inline assembly or C interop code must account for this hidden parameter when functions return large values — the documented register assignments above apply only to functions returning values that fit in registers.
+
 On **Win64** (Microsoft x64 ABI — used regardless of calling convention keyword):
 - All calling conventions effectively use the Microsoft x64 ABI
 - First four integer/pointer params: `RCX`, `RDX`, `R8`, `R9`
