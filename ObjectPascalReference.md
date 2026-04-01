@@ -4499,6 +4499,7 @@ The following type identifiers are predefined in the `System` unit (always in sc
 | `nil` | (special) | Null pointer/reference |
 | `MaxInt` | `Integer` | 2147483647 |
 | `MaxLongInt` | `LongInt` | 2147483647 |
+| `Pi` | `Extended` | 3.14159265358979323846... |
 
 ### 19.3 Intrinsic Functions (Compiler Magic)
 
@@ -4601,7 +4602,6 @@ These are built into the compiler and cannot be reassigned or referenced as proc
 | `Trunc(X)` | Truncate toward zero |
 | `Int(X)` | Integer part as float |
 | `Frac(X)` | Fractional part |
-| `Pi` | 3.14159265358979... |
 | `Random [( Range )]` | Pseudo-random number |
 | `Randomize` | Seed random generator |
 
