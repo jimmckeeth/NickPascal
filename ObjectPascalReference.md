@@ -3116,11 +3116,28 @@ Interfaces without a GUID can still be used for compile-time polymorphism but ca
 ### 9.9 The `Supports` Function
 
 ```pascal
-function Supports(const Instance: TObject; const IID: TGUID; out Intf): Boolean;
-function Supports(const Instance: IInterface; const IID: TGUID; out Intf): Boolean;
+function Supports(const Instance: TObject; const IID: TGUID; out Intf): Boolean; overload;
+function Supports(const Instance: IInterface; const IID: TGUID; out Intf): Boolean; overload;
+function Supports(const Instance: TObject; const IID: TGUID): Boolean; overload;
+function Supports(const Instance: IInterface; const IID: TGUID): Boolean; overload;
 ```
 
-`Supports` is a safer alternative to `as` — it returns `False` instead of raising an exception.
+`Supports` is a safer alternative to `as` — it returns `False` instead of raising an exception. Four overloads exist: two with an `out` parameter that both tests support and retrieves the interface reference, and two without `out` that only test support.
+
+The most common pattern is query-and-use:
+
+```pascal
+var Printable: IPrintable;
+if Supports(Obj, IPrintable, Printable) then
+  Printable.Print;
+```
+
+The two-argument form (without `out`) is useful for pure capability checks:
+
+```pascal
+if Supports(Obj, IPrintable) then
+  ShowMessage('Object supports printing');
+```
 
 ---
 
