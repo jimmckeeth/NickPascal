@@ -1175,14 +1175,16 @@ Operations on variants are resolved at **runtime** using type coercion rules. If
 
 #### 3.9.1 Variant Conversion Rules
 
-When performing operations on variants, the compiler inserts runtime conversion calls. The conversion priority (highest to lowest):
+When performing operations on variants, the compiler inserts runtime conversion calls. The conversion priority applies in **arithmetic and comparison** contexts (highest to lowest):
 
 1. If both operands are the same type, no conversion occurs.
-2. If either operand is a `string`, the other is converted to `string`.
-3. If either operand is `Double` (or `Extended`), the other is converted to `Double`.
-4. If either operand is `Currency`, the other is converted to `Currency`.
-5. If either operand is `Int64`, the other is converted to `Int64`.
-6. Otherwise, both are converted to `Integer` (if they fit) or `Int64`.
+2. If either operand is `Double` (or `Extended`), the other is converted to `Double`.
+3. If either operand is `Currency`, the other is converted to `Currency`.
+4. If either operand is `Int64`, the other is converted to `Int64`.
+5. Otherwise, both are converted to `Integer` (if they fit) or `Int64`.
+6. String variants participate in arithmetic only after being converted to a numeric type; if the conversion fails (e.g., the string is not a valid number), `EVariantError` is raised.
+
+> **Note on string variants in arithmetic**: In arithmetic operations, numeric types take precedence over strings. `Variant(1) + Variant('2')` yields `3` (integer addition after converting `'2'` to `2`), **not** `'12'`. String concatenation of variants requires explicit use of the `+` operator when both operands hold string variants, or use of `VarToStr` to force string context.
 
 Assigning a `Variant` to a typed variable performs an implicit conversion. If the conversion is not possible, `EVariantError` is raised.
 
