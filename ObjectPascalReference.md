@@ -1641,6 +1641,8 @@ if Obj is not TMyClass then ...
 
 `is not` is the negation of `is`. It is equivalent to `not (Obj is TMyClass)` but avoids the need for parentheses and reads more naturally. The same rules as `is` apply — it works with class types and interfaces.
 
+**Parsing rule:** When the parser encounters `is` followed by `not`, it treats `is not` as a single compound relational operator (two tokens, one operator). The `not` token is consumed as part of `is not` and is **not** interpreted as a unary prefix operator. This is a context-specific parser rule: `not` is only absorbed into a compound operator when it immediately follows `is` in this position.
+
 #### 5.8.1b The `not in` Operator (Delphi 13+)
 
 ```pascal
@@ -1648,6 +1650,8 @@ if Ch not in ['a'..'z'] then ...
 ```
 
 `not in` is the negation of `in`. It is equivalent to `not (Ch in S)` but avoids the parentheses required by operator precedence. The left operand is an ordinal value; the right is a set.
+
+**Parsing rule:** `not in` is parsed as a compound infix operator at the same precedence as `in` (relational). When the parser has already parsed a left-hand operand and encounters `not` followed by `in`, it treats the pair as a single relational operator rather than interpreting `not` as a unary prefix starting a new sub-expression. This look-ahead applies only in infix position (i.e., after a complete left-hand expression); a `not` at the start of an expression is always the unary prefix operator.
 
 #### 5.8.2 The `as` Operator
 
