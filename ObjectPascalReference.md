@@ -2468,6 +2468,8 @@ Rules:
 3. **Exception safety**: If an exception occurs during a constructor invoked on a **class reference** (the allocation form from rule 1), `Destroy` is called automatically and the allocated memory is freed. If the constructor was invoked on an existing instance (e.g., `inherited Create` or `Self.Create`), no automatic `Destroy` or deallocation occurs — the caller is responsible for cleanup.
 4. Constructors can be `virtual`. When called through a class-reference variable (`TClass.Create`), the actual constructor dispatched depends on the runtime class.
 
+> **Partial construction**: Because `Destroy` may be called automatically when a constructor raises an exception (rule 3), all destructors **must tolerate partially-initialized objects**. Fields that were not yet assigned will contain their zero-initialized values (integers 0, pointers `nil`, strings empty, etc.) — the constructor was zero-filling the instance before executing its body. A destructor that calls methods on uninitialized sub-objects (e.g., `FList.Free` without a `nil` guard) will itself raise an exception and mask the original one. Always use `FList.Free` (which checks for `nil`) rather than `FList.Destroy` in destructors.
+
 ### 8.7 Destructors
 
 ```pascal
