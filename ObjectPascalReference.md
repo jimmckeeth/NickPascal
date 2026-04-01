@@ -2369,7 +2369,7 @@ Object Pascal supports **single inheritance** for classes. Multiple interfaces m
 
 #### 8.2.1 `abstract` and `sealed` Classes
 
-- **`abstract`** class: should not be instantiated directly; the compiler issues a warning (W1020) if you do. It may contain abstract methods. Calling an unoverridden abstract method at runtime raises `EAbstractError`.
+- **`abstract`** class: should not be instantiated directly; the compiler issues a warning if a constructor call targets an abstract class type. It may contain abstract methods. Calling an unoverridden abstract method at runtime raises `EAbstractError`.
 - **`sealed`** class: cannot be subclassed (no class may inherit from it).
 
 ```pascal
