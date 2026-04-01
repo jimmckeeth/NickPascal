@@ -1,0 +1,577 @@
+// ===========================================================================
+//  ObjectPascal_semantics.mor -- Multi-pass semantic analysis
+//
+//  Defines semantic handlers for the Object Pascal AST.
+//
+//  Multi-pass strategy:
+//    Pass 1 "declarations":
+//      - Register all type names, routine signatures, constants
+//      - Create scopes for units, classes, records, interfaces
+//      - Handle forward references by pre-declaring types and routines
+//
+//    Pass 2 "analysis":
+//      - Resolve all identifier references (lookup)
+//      - Validate type usage and assignment compatibility
+//      - Trigger module compilation for uses clauses
+//
+//  Scope hierarchy:
+//    global -> unit_interface -> unit_implementation -> class -> method -> block
+//
+//  Symbol kinds:
+//    variable, routine, type, constant, parameter, field, property
+//
+//  Overload detection:
+//    Uses symbolExistsWithPrefix() and demoteCLinkageForPrefix()
+//    to support Pascal's overload directive (multiple routines with
+//    the same name but different parameter signatures).
+//
+//  Module compilation:
+//    compileModule() + setModuleExtension("pas") for uses clauses.
+//    Each unit in a uses clause triggers compilation of the referenced
+//    unit file.
+// ===========================================================================
+
+semantics {
+
+  // =========================================================================
+  //  PASS 1: Declarations (forward reference safe)
+  // =========================================================================
+
+  pass 1 "declarations" {
+
+    on program.root {
+      scope "global" {
+        visit children;
+      }
+    }
+
+    // --- Program structure ---
+
+    on stmt.program { }
+    on stmt.library { }
+    on stmt.package { }
+
+    on stmt.unit {
+      // Unit name becomes the module scope
+      scope @name {
+        visit children;
+      }
+    }
+
+    on stmt.interface_section {
+      scope "interface" {
+        visit children;
+      }
+    }
+
+    on stmt.implementation_section {
+      scope "implementation" {
+        visit children;
+      }
+    }
+
+    on stmt.initialization_section {
+      scope "initialization" {
+        visit children;
+      }
+    }
+
+    on stmt.finalization_section {
+      scope "finalization" {
+        visit children;
+      }
+    }
+
+    // --- Uses / module compilation ---
+
+    on stmt.uses {
+      setModuleExtension("pas");
+      visit children;
+    }
+
+    on stmt.uses_item {
+      guard ENABLE_MODULES {
+        compileModule(getAttr(node, "unit.name"));
+      }
+    }
+
+    // --- Declarations ---
+
+    on stmt.const_section {
+      visit children;
+    }
+
+    on stmt.const_decl {
+      declare @cname as constant;
+      visit children;
+    }
+
+    on stmt.type_section {
+      visit children;
+    }
+
+    on stmt.class_decl {
+      declare @type_name as type;
+      scope @type_name {
+        visit children;
+      }
+    }
+
+    on stmt.class_forward {
+      declare @type_name as type;
+    }
+
+    on stmt.class_ref_decl {
+      declare @type_name as type;
+    }
+
+    on stmt.interface_decl {
+      declare @type_name as type;
+      scope @type_name {
+        visit children;
+      }
+    }
+
+    on stmt.interface_forward {
+      declare @type_name as type;
+    }
+
+    on stmt.dispinterface_decl {
+      declare @type_name as type;
+    }
+
+    on stmt.record_decl {
+      declare @type_name as type;
+      scope @type_name {
+        visit children;
+      }
+    }
+
+    on stmt.enum_decl {
+      declare @type_name as type;
+      visit children;
+    }
+
+    on stmt.enum_elem {
+      declare @elem_name as constant;
+    }
+
+    on stmt.set_decl {
+      declare @type_name as type;
+    }
+
+    on stmt.array_decl {
+      declare @type_name as type;
+    }
+
+    on stmt.pointer_decl {
+      declare @type_name as type;
+    }
+
+    on stmt.proc_type_decl {
+      declare @type_name as type;
+    }
+
+    on stmt.method_ref_decl {
+      declare @type_name as type;
+    }
+
+    on stmt.subrange_decl {
+      declare @type_name as type;
+    }
+
+    on stmt.type_alias {
+      declare @type_name as type;
+    }
+
+    on stmt.file_type_decl {
+      declare @type_name as type;
+    }
+
+    on stmt.nested_type {
+      declare @type_name as type;
+    }
+
+    // --- Variables ---
+
+    on stmt.var_decl {
+      visit children;
+    }
+
+    on stmt.single_var {
+      declare @vname as variable;
+      visit children;
+    }
+
+    on stmt.threadvar_decl {
+      visit children;
+    }
+
+    on stmt.inline_var {
+      declare @vname as variable;
+      visit children;
+    }
+
+    on stmt.inline_const {
+      declare @cname as constant;
+      visit children;
+    }
+
+    // --- Labels ---
+
+    on stmt.label_decl {
+      visit children;
+    }
+
+    on stmt.label_item {
+      declare @label_name as constant;
+    }
+
+    // --- Resource strings ---
+
+    on stmt.resourcestring_decl {
+      visit children;
+    }
+
+    on stmt.resstring_item {
+      declare @rsname as constant;
+    }
+
+    // --- Routines ---
+
+    on stmt.func_decl {
+      let name = getAttr(node, "func_name");
+
+      // Build signature for overload detection
+      let sig = name + "(";
+      let pi = 0;
+      let pc = child_count() - 2;
+      if pc < 0 { pc = 0; }
+      while pi < pc {
+        let p = getChild(node, pi);
+        if nodeKind(p) == "stmt.param" {
+          if pi > 0 { sig = sig + ","; }
+          sig = sig + getAttr(p, "param.type_text");
+        }
+        pi = pi + 1;
+      }
+      sig = sig + ")";
+      setAttr(node, "sig", sig);
+
+      // Overload detection
+      guard ENABLE_OVERLOADS {
+        if symbolExistsWithPrefix(name + "(") {
+          demoteCLinkageForPrefix(name + "(");
+        }
+      }
+
+      declare @sig as routine;
+      scope @func_name {
+        // Declare parameters in function scope
+        visit children;
+      }
+    }
+
+    on stmt.proc_decl {
+      let name = getAttr(node, "func_name");
+
+      let sig = name + "(";
+      let pi = 0;
+      let pc = child_count() - 2;
+      if pc < 0 { pc = 0; }
+      while pi < pc {
+        let p = getChild(node, pi);
+        if nodeKind(p) == "stmt.param" {
+          if pi > 0 { sig = sig + ","; }
+          sig = sig + getAttr(p, "param.type_text");
+        }
+        pi = pi + 1;
+      }
+      sig = sig + ")";
+      setAttr(node, "sig", sig);
+
+      guard ENABLE_OVERLOADS {
+        if symbolExistsWithPrefix(name + "(") {
+          demoteCLinkageForPrefix(name + "(");
+        }
+      }
+
+      declare @sig as routine;
+      scope @func_name {
+        visit children;
+      }
+    }
+
+    on stmt.constructor_decl {
+      let name = getAttr(node, "func_name");
+      declare @func_name as routine;
+      scope @func_name {
+        visit children;
+      }
+    }
+
+    on stmt.destructor_decl {
+      let name = getAttr(node, "func_name");
+      declare @func_name as routine;
+      scope @func_name {
+        visit children;
+      }
+    }
+
+    // --- Parameters ---
+
+    on stmt.param {
+      let pname = getAttr(node, "param.name");
+      if pname != "" {
+        declare @param.name as parameter;
+      }
+    }
+
+    // --- Class/record members ---
+
+    on stmt.field_decl {
+      // Fields may have multiple names comma-separated
+      declare @field_names as variable;
+    }
+
+    on stmt.class_var {
+      declare @vname as variable;
+    }
+
+    on stmt.class_const {
+      declare @cname as constant;
+    }
+
+    on stmt.method_decl {
+      declare @method_name as routine;
+      scope @method_name {
+        visit children;
+      }
+    }
+
+    on stmt.interface_method {
+      declare @method_name as routine;
+      visit children;
+    }
+
+    on stmt.property_decl {
+      declare @prop_name as variable;
+    }
+
+    on stmt.operator_decl {
+      declare @op_name as routine;
+      visit children;
+    }
+
+    // --- Main block ---
+
+    on stmt.main_block {
+      scope "main" {
+        visit children;
+      }
+    }
+
+    // --- Exports ---
+
+    on stmt.exports {
+      visit children;
+    }
+
+    on stmt.export_item { }
+  }
+
+  // =========================================================================
+  //  PASS 2: Analysis (references and validation)
+  // =========================================================================
+
+  pass 2 "analysis" {
+
+    on program.root {
+      scope "global" {
+        visit children;
+      }
+    }
+
+    on stmt.unit {
+      scope @name {
+        visit children;
+      }
+    }
+
+    on stmt.interface_section {
+      scope "interface" {
+        visit children;
+      }
+    }
+
+    on stmt.implementation_section {
+      scope "implementation" {
+        visit children;
+      }
+    }
+
+    // --- Expression resolution ---
+
+    on expr.ident {
+      lookup @name or { warning "undeclared identifier '{@name}'"; };
+    }
+
+    on expr.call {
+      visit children;
+    }
+
+    on expr.member {
+      visit children;
+    }
+
+    on expr.index {
+      visit children;
+    }
+
+    on expr.add { visit children; }
+    on expr.mul { visit children; }
+    on expr.div_mod { visit children; }
+    on expr.shift { visit children; }
+    on expr.and { visit children; }
+    on expr.or { visit children; }
+    on expr.compare { visit children; }
+    on expr.in { visit children; }
+    on expr.is { visit children; }
+    on expr.as { visit children; }
+    on expr.negate { visit children; }
+    on expr.pos { visit children; }
+    on expr.not { visit children; }
+    on expr.address_of { visit children; }
+    on expr.deref { visit children; }
+    on expr.grouped { visit children; }
+    on expr.inherited { visit children; }
+    on expr.set_constructor { visit children; }
+    on expr.anon_method { visit children; }
+    on expr.conditional { visit children; }
+    on expr.self { }
+    on expr.integer { }
+    on expr.float { }
+    on expr.sstring { }
+    on expr.bool_true { }
+    on expr.bool_false { }
+    on expr.nil { }
+
+    // --- Statement analysis ---
+
+    on stmt.main_block {
+      scope "main" {
+        visit children;
+      }
+    }
+
+    on stmt.func_decl {
+      scope @func_name {
+        visit children;
+      }
+    }
+
+    on stmt.proc_decl {
+      scope @func_name {
+        visit children;
+      }
+    }
+
+    on stmt.constructor_decl {
+      scope @func_name {
+        visit children;
+      }
+    }
+
+    on stmt.destructor_decl {
+      scope @func_name {
+        visit children;
+      }
+    }
+
+    on stmt.class_decl {
+      scope @type_name {
+        visit children;
+      }
+    }
+
+    on stmt.record_decl {
+      scope @type_name {
+        visit children;
+      }
+    }
+
+    on stmt.interface_decl {
+      scope @type_name {
+        visit children;
+      }
+    }
+
+    on stmt.var_decl { visit children; }
+    on stmt.single_var { visit children; }
+    on stmt.const_section { visit children; }
+    on stmt.const_decl { visit children; }
+    on stmt.type_section { visit children; }
+    on stmt.threadvar_decl { visit children; }
+    on stmt.label_decl { visit children; }
+    on stmt.resourcestring_decl { visit children; }
+    on stmt.inline_var { visit children; }
+    on stmt.inline_const { visit children; }
+
+    on stmt.if { visit children; }
+    on stmt.case { visit children; }
+    on stmt.for { visit children; }
+    on stmt.while { visit children; }
+    on stmt.repeat { visit children; }
+    on stmt.with { visit children; }
+    on stmt.goto { }
+
+    on stmt.try_except { visit children; }
+    on stmt.raise { visit children; }
+    on stmt.on_handler { visit children; }
+
+    on stmt.ident_stmt { visit children; }
+    on stmt.writeln { }
+    on stmt.write_stmt { }
+
+    on stmt.uses { visit children; }
+    on stmt.uses_item { }
+    on stmt.requires { }
+    on stmt.contains { }
+    on stmt.exports { }
+    on stmt.asm { }
+
+    on stmt.program { }
+    on stmt.library { }
+    on stmt.package { }
+
+    on stmt.initialization_section { visit children; }
+    on stmt.finalization_section { visit children; }
+
+    on stmt.method_decl { visit children; }
+    on stmt.field_decl { }
+    on stmt.class_var { }
+    on stmt.class_const { visit children; }
+    on stmt.property_decl { }
+    on stmt.operator_decl { visit children; }
+    on stmt.interface_method { visit children; }
+    on stmt.param { }
+
+    on stmt.enum_decl { visit children; }
+    on stmt.enum_elem { }
+    on stmt.set_decl { }
+    on stmt.array_decl { }
+    on stmt.pointer_decl { }
+    on stmt.proc_type_decl { visit children; }
+    on stmt.method_ref_decl { visit children; }
+    on stmt.subrange_decl { }
+    on stmt.type_alias { }
+    on stmt.file_type_decl { }
+    on stmt.nested_type { }
+    on stmt.class_forward { }
+    on stmt.class_ref_decl { }
+    on stmt.interface_forward { }
+    on stmt.dispinterface_decl { }
+
+    on stmt.directive_apptype { }
+  }
+}

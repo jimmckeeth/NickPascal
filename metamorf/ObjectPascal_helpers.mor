@@ -1,0 +1,261 @@
+// ===========================================================================
+//  ObjectPascal_helpers.mor -- Shared routines and fragments
+//
+//  Provides reusable code blocks for grammar rules and emitters:
+//
+//  Routines:
+//    emitBlock(blk)           Walk and emit all children of a block node
+//    emitParamList(nd)        Emit function parameters via param() IR calls
+//    mapOperator(op) -> str   Map Pascal operator text to C++ equivalent
+//    emitVisibility(vis)      Map Pascal visibility to C++ access specifier
+//    mapCallingConv(cc)       Map calling convention to C++ attribute
+//    pascalStringToCpp(s)     Convert Pascal string literal to C++ string
+//
+//  Fragments:
+//    emit_params              Inline parameter emission for func/proc decls
+//    emit_block_children      Inline block child emission
+//    emit_method_directives   Parse method directive chain
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+//  Fragment: emit parameters for function/procedure declarations
+// ---------------------------------------------------------------------------
+fragment emit_params {
+  let pi = 0;
+  let pc = child_count() - 2;
+  while pi < pc {
+    let p = getChild(node, pi);
+    let ptype = getAttr(p, "param.type_text");
+    let pmode = getAttr(p, "param.mode");
+    let ctype = typeToIR(typeTextToKind(ptype));
+    if pmode == "var" {
+      param(getAttr(p, "param.name"), ctype + "&");
+    } else {
+      if pmode == "out" {
+        param(getAttr(p, "param.name"), ctype + "&");
+      } else {
+        if pmode == "const" {
+          param(getAttr(p, "param.name"), "const " + ctype + "&");
+        } else {
+          param(getAttr(p, "param.name"), ctype);
+        }
+      }
+    }
+    pi = pi + 1;
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Fragment: emit block children
+// ---------------------------------------------------------------------------
+fragment emit_block_children {
+  let bi = 0;
+  let bn = child_count(blk);
+  while bi < bn {
+    emitNode(getChild(blk, bi));
+    bi = bi + 1;
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Fragment: parse method directives (virtual, override, abstract, etc.)
+//  Used by grammar rules for method declarations inside classes
+// ---------------------------------------------------------------------------
+fragment parse_method_directives {
+  let nd = getResultNode();
+  let parsing_dirs = true;
+  while parsing_dirs {
+    if matchToken("keyword.virtual") {
+      setAttr(nd, "is_virtual", "true");
+    } else {
+      if matchToken("keyword.override") {
+        setAttr(nd, "is_override", "true");
+      } else {
+        if matchToken("keyword.abstract") {
+          setAttr(nd, "is_abstract", "true");
+        } else {
+          if matchToken("keyword.dynamic") {
+            setAttr(nd, "is_dynamic", "true");
+          } else {
+            if matchToken("keyword.reintroduce") {
+              setAttr(nd, "is_reintroduce", "true");
+            } else {
+              if matchToken("keyword.final") {
+                setAttr(nd, "is_final", "true");
+              } else {
+                if matchToken("keyword.static") {
+                  setAttr(nd, "is_static", "true");
+                } else {
+                  if matchToken("keyword.overload") {
+                    setAttr(nd, "is_overload", "true");
+                  } else {
+                    if matchToken("keyword.inline") {
+                      setAttr(nd, "is_inline", "true");
+                    } else {
+                      if matchToken("keyword.cdecl") {
+                        setAttr(nd, "calling_conv", "cdecl");
+                      } else {
+                        if matchToken("keyword.stdcall") {
+                          setAttr(nd, "calling_conv", "stdcall");
+                        } else {
+                          if matchToken("keyword.safecall") {
+                            setAttr(nd, "calling_conv", "safecall");
+                          } else {
+                            if matchToken("keyword.register") {
+                              setAttr(nd, "calling_conv", "register");
+                            } else {
+                              if matchToken("keyword.winapi") {
+                                setAttr(nd, "calling_conv", "winapi");
+                              } else {
+                                if matchToken("keyword.noreturn") {
+                                  setAttr(nd, "is_noreturn", "true");
+                                } else {
+                                  parsing_dirs = false;
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if parsing_dirs {
+      matchToken("delimiter.semicolon");
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Routine: emit all children of a block node
+// ---------------------------------------------------------------------------
+routine emitBlock(blk: node) {
+  let i = 0;
+  while i < child_count(blk) {
+    emitNode(getChild(blk, i));
+    i = i + 1;
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Routine: emit function/procedure parameters via param() IR calls
+// ---------------------------------------------------------------------------
+routine emitParamList(nd: node) {
+  let i = 0;
+  let n = child_count(nd);
+  while i < n {
+    let p = getChild(nd, i);
+    let k = nodeKind(p);
+    if k == "stmt.param" {
+      let ptype = getAttr(p, "param.type_text");
+      let pmode = getAttr(p, "param.mode");
+      let ctype = typeToIR(typeTextToKind(ptype));
+      if pmode == "var" {
+        param(getAttr(p, "param.name"), ctype + "&");
+      } else {
+        if pmode == "out" {
+          param(getAttr(p, "param.name"), ctype + "&");
+        } else {
+          if pmode == "const" {
+            param(getAttr(p, "param.name"), "const " + ctype + "&");
+          } else {
+            param(getAttr(p, "param.name"), ctype);
+          }
+        }
+      }
+    }
+    i = i + 1;
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Routine: map Pascal operator to C++ operator
+// ---------------------------------------------------------------------------
+routine mapOperator(op: string) -> string {
+  if op == "=" { return "=="; }
+  if op == "<>" { return "!="; }
+  if op == ":=" { return "="; }
+  if op == "div" { return "/"; }
+  if op == "mod" { return "%"; }
+  if op == "and" { return "&&"; }
+  if op == "or" { return "||"; }
+  if op == "xor" { return "^"; }
+  if op == "not" { return "!"; }
+  if op == "shl" { return "<<"; }
+  if op == "shr" { return ">>"; }
+  if op == "in" { return "/* in */"; }
+  if op == "is" { return "/* is */"; }
+  if op == "as" { return "/* as */"; }
+  return op;
+}
+
+// ---------------------------------------------------------------------------
+//  Routine: map Pascal visibility to C++ access specifier
+// ---------------------------------------------------------------------------
+routine emitVisibility(vis: string) -> string {
+  if vis == "public" { return "public"; }
+  if vis == "private" { return "private"; }
+  if vis == "strict private" { return "private"; }
+  if vis == "protected" { return "protected"; }
+  if vis == "strict protected" { return "protected"; }
+  if vis == "published" { return "public"; }
+  return "public";
+}
+
+// ---------------------------------------------------------------------------
+//  Routine: map calling convention to C++ attribute/annotation
+// ---------------------------------------------------------------------------
+routine mapCallingConv(cc: string) -> string {
+  if cc == "cdecl" { return "__cdecl"; }
+  if cc == "stdcall" { return "__stdcall"; }
+  if cc == "safecall" { return "__stdcall"; }
+  if cc == "winapi" { return "__stdcall"; }
+  if cc == "register" { return "/* fastcall */"; }
+  if cc == "pascal" { return "/* pascal */"; }
+  return "";
+}
+
+// ---------------------------------------------------------------------------
+//  Routine: convert Pascal string to C++ string literal
+// ---------------------------------------------------------------------------
+routine pascalStringToCpp(s: string) -> string {
+  // Pascal uses '' for embedded quotes, C++ uses \"
+  return "\"" + replace(s, "'", "\"") + "\"";
+}
+
+// ---------------------------------------------------------------------------
+//  Routine: build a C++ parameter signature string from a param list node
+// ---------------------------------------------------------------------------
+routine buildParamSig(nd: node) -> string {
+  let sig = "";
+  let i = 0;
+  let n = child_count(nd);
+  while i < n {
+    let p = getChild(nd, i);
+    if nodeKind(p) == "stmt.param" {
+      if i > 0 {
+        sig = sig + ", ";
+      }
+      let ptype = getAttr(p, "param.type_text");
+      let pmode = getAttr(p, "param.mode");
+      let ctype = typeToIR(typeTextToKind(ptype));
+      if pmode == "var" or pmode == "out" {
+        sig = sig + ctype + "& " + getAttr(p, "param.name");
+      } else {
+        if pmode == "const" {
+          sig = sig + "const " + ctype + "& " + getAttr(p, "param.name");
+        } else {
+          sig = sig + ctype + " " + getAttr(p, "param.name");
+        }
+      }
+    }
+    i = i + 1;
+  }
+  return sig;
+}

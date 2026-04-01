@@ -1,0 +1,40 @@
+// ===========================================================================
+//  ObjectPascal.mor -- Comprehensive Object Pascal language definition
+//
+//  A Metamorf compiler definition for Object Pascal as specified in
+//  Embarcadero Delphi 13.1 Florence. Targets C++23 native binaries.
+//
+//  This root file declares the language and imports all pipeline stages:
+//
+//    ObjectPascal_tokens.mor     Lexer tokens, operators, and type system
+//    ObjectPascal_helpers.mor    Shared routines and reusable fragments
+//    ObjectPascal_grammar.mor    Pratt parser rules (prefix, infix, stmt)
+//    ObjectPascal_semantics.mor  Multi-pass semantic analysis
+//    ObjectPascal_emitters.mor   C++23 code generation
+//
+//  Based on: ObjectPascalReference.md v1.1 (March 2026)
+//
+//  Compile with:  Metamorf -l ObjectPascal.mor -s myprogram.pas -r
+//
+//  Known limitations:
+//    - Pascal { } block comments cannot be used (ConfigCpp reserves braces).
+//      Use (* *) or // comments in source, or a preprocessing step.
+//    - Inline assembly (asm..end) is parsed but passed through as raw text.
+//    - Full generic constraint validation is limited.
+//    - COM/dispinterface codegen is simplified.
+//    - RTTI attribute generation is beyond C++23 emission scope.
+// ===========================================================================
+
+language ObjectPascal version "1.0";
+
+const {
+  ENABLE_OVERLOADS = true;
+  ENABLE_GENERICS  = true;
+  ENABLE_MODULES   = true;
+}
+
+import "ObjectPascal_tokens.mor";
+import "ObjectPascal_helpers.mor";
+import "ObjectPascal_grammar.mor";
+import "ObjectPascal_semantics.mor";
+import "ObjectPascal_emitters.mor";

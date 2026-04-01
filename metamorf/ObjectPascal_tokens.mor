@@ -1,0 +1,430 @@
+// ===========================================================================
+//  ObjectPascal_tokens.mor -- Token declarations and type system
+//
+//  Comprehensive token set for Object Pascal (Delphi 13.1 Florence).
+//
+//  Token categories:
+//    keyword.*       All 65 reserved words + context-sensitive directives
+//    op.*            All operators (:=, <>, <=, >=, .., +, -, *, /, etc.)
+//    delimiter.*     Punctuation ( ) , : ; .
+//    comment.*       // (line), /* */ (block) — see note on { } below
+//    string.*        ' (Pascal-style, noescape)
+//    directive.*     Compiler directives with {$ prefix
+//
+//  NOTE ON BLOCK COMMENTS:
+//    Pascal traditionally uses { } for block comments. ConfigCpp reserves
+//    { } as delimiter.lbrace/rbrace for C++ brace passthrough. Therefore:
+//    - Block comments use /* */ in the .mor definition
+//    - Pascal source files should use (* *) or // for comments
+//    - Compiler directives {$...} are handled via the directive system
+//
+//  NOTE ON BRACKETS:
+//    [ ] are provided by ConfigCpp as delimiter.lbracket/rbracket.
+//    They are NOT declared here.
+//
+//  Type system:
+//    ~40 Pascal types mapped through three layers:
+//    source text -> type kind -> C++ type
+//    e.g. "Integer" -> "type.integer" -> "int64_t"
+// ===========================================================================
+
+tokens {
+  // Object Pascal is case-insensitive
+  casesensitive = false;
+
+  // Identifier rules: letters, digits, underscores
+  identifier_start = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_";
+  identifier_part  = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789";
+
+  // Statement terminator
+  terminator = delimiter.semicolon;
+
+  // Hex prefix: $ (Pascal convention)
+  hex_prefix = "$";
+
+  // =========================================================================
+  //  RESERVED WORDS (65 total per Object Pascal spec §1.5)
+  // =========================================================================
+
+  token keyword.and            = "and";
+  token keyword.array          = "array";
+  token keyword.as             = "as";
+  token keyword.asm            = "asm";
+  token keyword.at             = "at";
+  token keyword.begin          = "begin";
+  token keyword.case           = "case";
+  token keyword.class          = "class";
+  token keyword.const          = "const";
+  token keyword.constructor    = "constructor";
+  token keyword.destructor     = "destructor";
+  token keyword.dispinterface  = "dispinterface";
+  token keyword.div            = "div";
+  token keyword.do             = "do";
+  token keyword.downto         = "downto";
+  token keyword.else           = "else";
+  token keyword.end            = "end";
+  token keyword.except         = "except";
+  token keyword.exports        = "exports";
+  token keyword.file           = "file";
+  token keyword.finalization   = "finalization";
+  token keyword.finally        = "finally";
+  token keyword.for            = "for";
+  token keyword.function       = "function";
+  token keyword.goto           = "goto";
+  token keyword.if             = "if";
+  token keyword.implementation = "implementation";
+  token keyword.in             = "in";
+  token keyword.inherited      = "inherited";
+  token keyword.initialization = "initialization";
+  token keyword.interface      = "interface";
+  token keyword.is             = "is";
+  token keyword.label          = "label";
+  token keyword.library        = "library";
+  token keyword.mod            = "mod";
+  token keyword.nil            = "nil";
+  token keyword.not            = "not";
+  token keyword.object         = "object";
+  token keyword.of             = "of";
+  token keyword.on             = "on";
+  token keyword.or             = "or";
+  token keyword.packed         = "packed";
+  token keyword.procedure      = "procedure";
+  token keyword.program        = "program";
+  token keyword.property       = "property";
+  token keyword.raise          = "raise";
+  token keyword.record         = "record";
+  token keyword.repeat         = "repeat";
+  token keyword.resourcestring = "resourcestring";
+  token keyword.set            = "set";
+  token keyword.shl            = "shl";
+  token keyword.shr            = "shr";
+  token keyword.string         = "string";
+  token keyword.then           = "then";
+  token keyword.threadvar      = "threadvar";
+  token keyword.to             = "to";
+  token keyword.try            = "try";
+  token keyword.type           = "type";
+  token keyword.unit           = "unit";
+  token keyword.until          = "until";
+  token keyword.uses           = "uses";
+  token keyword.var            = "var";
+  token keyword.while          = "while";
+  token keyword.with           = "with";
+  token keyword.xor            = "xor";
+
+  // =========================================================================
+  //  DIRECTIVE WORDS (context-sensitive keywords per §1.6)
+  //  Registered as keywords so the parser can recognize them in context.
+  // =========================================================================
+
+  token keyword.abstract       = "abstract";
+  token keyword.cdecl          = "cdecl";
+  token keyword.contains       = "contains";
+  token keyword.default        = "default";
+  token keyword.delayed        = "delayed";
+  token keyword.deprecated     = "deprecated";
+  token keyword.dispid         = "dispid";
+  token keyword.dynamic        = "dynamic";
+  token keyword.experimental   = "experimental";
+  token keyword.export         = "export";
+  token keyword.external       = "external";
+  token keyword.final          = "final";
+  token keyword.forward        = "forward";
+  token keyword.helper         = "helper";
+  token keyword.implements     = "implements";
+  token keyword.index          = "index";
+  token keyword.inline         = "inline";
+  token keyword.message        = "message";
+  token keyword.name           = "name";
+  token keyword.nodefault      = "nodefault";
+  token keyword.noreturn       = "noreturn";
+  token keyword.operator       = "operator";
+  token keyword.out            = "out";
+  token keyword.overload       = "overload";
+  token keyword.override       = "override";
+  token keyword.package        = "package";
+  token keyword.pascal_cc      = "pascal";
+  token keyword.platform       = "platform";
+  token keyword.private        = "private";
+  token keyword.protected      = "protected";
+  token keyword.public         = "public";
+  token keyword.published      = "published";
+  token keyword.read           = "read";
+  token keyword.readonly       = "readonly";
+  token keyword.reference      = "reference";
+  token keyword.register       = "register";
+  token keyword.reintroduce    = "reintroduce";
+  token keyword.requires       = "requires";
+  token keyword.resident       = "resident";
+  token keyword.safecall       = "safecall";
+  token keyword.sealed         = "sealed";
+  token keyword.static         = "static";
+  token keyword.stdcall        = "stdcall";
+  token keyword.stored         = "stored";
+  token keyword.strict         = "strict";
+  token keyword.virtual        = "virtual";
+  token keyword.winapi         = "winapi";
+  token keyword.write          = "write";
+  token keyword.writeonly      = "writeonly";
+
+  // Built-in constants/literals
+  token keyword.true           = "true";
+  token keyword.false          = "false";
+
+  // WriteLn/Write (special handling for C++ output)
+  token keyword.writeln        = "writeln";
+  token keyword.write_proc     = "write";
+
+  // Result (implicit function return variable)
+  token keyword.result         = "result";
+
+  // Self reference
+  token keyword.self           = "self";
+
+  // =========================================================================
+  //  OPERATORS
+  // =========================================================================
+
+  // Multi-character operators (must be declared before single-char subsets)
+  token op.assign    = ":=";
+  token op.neq       = "<>";
+  token op.lte       = "<=";
+  token op.gte       = ">=";
+  token op.dotdot    = "..";
+
+  // Single-character operators
+  token op.plus      = "+";
+  token op.minus     = "-";
+  token op.star      = "*";
+  token op.slash     = "/";
+  token op.eq        = "=";
+  token op.lt        = "<";
+  token op.gt        = ">";
+  token op.caret     = "^";
+  token op.at        = "@";
+
+  // =========================================================================
+  //  DELIMITERS
+  // =========================================================================
+
+  token delimiter.lparen    = "(";
+  token delimiter.rparen    = ")";
+  // [ ] provided by ConfigCpp as delimiter.lbracket/rbracket
+  token delimiter.comma     = ",";
+  token delimiter.colon     = ":";
+  token delimiter.semicolon = ";";
+  token delimiter.dot       = ".";
+
+  // =========================================================================
+  //  COMMENTS
+  // =========================================================================
+
+  // Line comments
+  token comment.line        = "//";
+
+  // Block comments — using /* */ since { } is reserved by ConfigCpp
+  // Pascal source should use (* *) or // comments
+  token comment.block_open  = "/*";
+  token comment.block_close = "*/";
+
+  // =========================================================================
+  //  STRING LITERALS
+  // =========================================================================
+
+  // Pascal single-quoted strings: 'Hello World'
+  // [noescape] means no backslash escaping; '' is used for embedded quotes
+  token string.sstring = "'" [noescape];
+
+  // =========================================================================
+  //  COMPILER DIRECTIVES
+  //  Using {$ prefix for Delphi-style compiler directives
+  // =========================================================================
+
+  directive_prefix = "{$";
+
+  // Conditional compilation directives
+  token directive.define     = "DEFINE"    [define];
+  token directive.undef      = "UNDEF"     [undef];
+  token directive.ifdef      = "IFDEF"     [ifdef];
+  token directive.ifndef     = "IFNDEF"    [ifndef];
+  token directive.ifopt      = "IFOPT"     [ifdef];
+  token directive.cond_if    = "IF"        [ifdef];
+  token directive.elseif     = "ELSEIF"    [elseif];
+  token directive.cond_else  = "ELSE"      [else];
+  token directive.endif      = "ENDIF"     [endif];
+  token directive.ifend      = "IFEND"     [endif];
+
+  // Common compiler switches
+  token directive.include    = "INCLUDE";
+  token directive.i_short    = "I";
+  token directive.r_switch   = "R";
+  token directive.q_switch   = "Q";
+  token directive.h_switch   = "H";
+  token directive.b_switch   = "B";
+  token directive.j_switch   = "J";
+  token directive.t_switch   = "T";
+
+  // Build directives (mapped to Metamorf pipeline config)
+  token directive.apptype    = "APPTYPE";
+  token directive.warn       = "WARN";
+  token directive.hints      = "HINTS";
+  token directive.warnings   = "WARNINGS";
+  token directive.align      = "ALIGN";
+  token directive.minenumsize = "MINENUMSIZE";
+  token directive.scopedenums = "SCOPEDENUMS";
+}
+
+// ===========================================================================
+//  TYPE SYSTEM
+//
+//  Three-layer type resolution:
+//    1. type keyword  -> type kind string    (typeTextToKind)
+//    2. type kind     -> C++ type string     (typeToIR)
+//    3. literal kind  -> type kind           (literal inference)
+// ===========================================================================
+
+types {
+  // --- Integer types ---
+  type integer    = "type.integer";
+  type shortint   = "type.shortint";
+  type smallint   = "type.smallint";
+  type longint    = "type.longint";
+  type int64      = "type.int64";
+  type byte       = "type.byte";
+  type word       = "type.word";
+  type longword   = "type.longword";
+  type cardinal   = "type.cardinal";
+  type uint64     = "type.uint64";
+  type nativeint  = "type.nativeint";
+  type nativeuint = "type.nativeuint";
+
+  // --- Floating-point types ---
+  type single     = "type.single";
+  type double     = "type.double";
+  type extended   = "type.extended";
+  type currency   = "type.currency";
+  type comp       = "type.comp";
+  type real       = "type.real";
+  type real48     = "type.real48";
+
+  // --- Character types ---
+  type char       = "type.char";
+  type ansichar   = "type.ansichar";
+  type widechar   = "type.widechar";
+
+  // --- String types ---
+  type string     = "type.string";
+  type ansistring = "type.ansistring";
+  type widestring = "type.widestring";
+  type shortstring = "type.shortstring";
+  type rawbytestring = "type.rawbytestring";
+  type utf8string = "type.utf8string";
+
+  // --- Boolean types ---
+  type boolean    = "type.boolean";
+  type bytebool   = "type.bytebool";
+  type wordbool   = "type.wordbool";
+  type longbool   = "type.longbool";
+
+  // --- Special types ---
+  type pointer    = "type.pointer";
+  type variant    = "type.variant";
+  type olevariant = "type.olevariant";
+
+  // --- Class types ---
+  type tobject    = "type.tobject";
+
+  // =========================================================================
+  //  Type kind -> C++ type mappings
+  // =========================================================================
+
+  // Integers
+  map "type.integer"    -> "int32_t";
+  map "type.shortint"   -> "int8_t";
+  map "type.smallint"   -> "int16_t";
+  map "type.longint"    -> "int32_t";
+  map "type.int64"      -> "int64_t";
+  map "type.byte"       -> "uint8_t";
+  map "type.word"       -> "uint16_t";
+  map "type.longword"   -> "uint32_t";
+  map "type.cardinal"   -> "uint32_t";
+  map "type.uint64"     -> "uint64_t";
+  map "type.nativeint"  -> "intptr_t";
+  map "type.nativeuint" -> "uintptr_t";
+
+  // Floating-point
+  map "type.single"     -> "float";
+  map "type.double"     -> "double";
+  map "type.extended"   -> "long double";
+  map "type.currency"   -> "int64_t";
+  map "type.comp"       -> "int64_t";
+  map "type.real"       -> "double";
+  map "type.real48"     -> "double";
+
+  // Characters
+  map "type.char"       -> "char16_t";
+  map "type.ansichar"   -> "char";
+  map "type.widechar"   -> "char16_t";
+
+  // Strings
+  map "type.string"        -> "std::string";
+  map "type.ansistring"    -> "std::string";
+  map "type.widestring"    -> "std::wstring";
+  map "type.shortstring"   -> "std::string";
+  map "type.rawbytestring" -> "std::string";
+  map "type.utf8string"    -> "std::string";
+
+  // Booleans
+  map "type.boolean"    -> "bool";
+  map "type.bytebool"   -> "uint8_t";
+  map "type.wordbool"   -> "uint16_t";
+  map "type.longbool"   -> "uint32_t";
+
+  // Special
+  map "type.pointer"    -> "void*";
+  map "type.variant"    -> "std::any";
+  map "type.olevariant" -> "std::any";
+  map "type.tobject"    -> "TObject*";
+
+  // =========================================================================
+  //  Literal type inference
+  // =========================================================================
+
+  literal "expr.integer"    = "type.integer";
+  literal "expr.float"      = "type.double";
+  literal "expr.sstring"    = "type.string";
+  literal "expr.bool_true"  = "type.boolean";
+  literal "expr.bool_false" = "type.boolean";
+  literal "expr.nil"        = "type.pointer";
+
+  // =========================================================================
+  //  Type compatibility (widening rules)
+  // =========================================================================
+
+  compatible "type.byte",     "type.integer"  -> "type.integer";
+  compatible "type.shortint", "type.integer"  -> "type.integer";
+  compatible "type.smallint", "type.integer"  -> "type.integer";
+  compatible "type.word",     "type.integer"  -> "type.integer";
+  compatible "type.integer",  "type.int64"    -> "type.int64";
+  compatible "type.longint",  "type.int64"    -> "type.int64";
+  compatible "type.cardinal", "type.int64"    -> "type.int64";
+  compatible "type.single",   "type.double"   -> "type.double";
+  compatible "type.double",   "type.extended" -> "type.extended";
+  compatible "type.integer",  "type.double"   -> "type.double";
+  compatible "type.int64",    "type.double"   -> "type.double";
+  compatible "type.char",     "type.string"   -> "type.string";
+  compatible "type.ansichar", "type.string"   -> "type.string";
+
+  // =========================================================================
+  //  Declaration and call node kinds for type resolution
+  // =========================================================================
+
+  decl_kind "stmt.var_decl";
+  decl_kind "stmt.single_var";
+  decl_kind "stmt.const_decl";
+  decl_kind "stmt.param";
+  decl_kind "stmt.field_decl";
+
+  call_kind "expr.call";
+  call_name_attr = "call.name";
+}

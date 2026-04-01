@@ -1,0 +1,2589 @@
+// ===========================================================================
+//  ObjectPascal_grammar.mor -- Comprehensive grammar rules for Object Pascal
+//
+//  Pratt parser rules covering the full Object Pascal language:
+//
+//  PREFIX EXPRESSION RULES (~15):
+//    Identifier, integer/float/string literals, boolean, nil, grouped,
+//    unary minus, not, address-of (@), inherited, set constructor,
+//    anonymous method, conditional expression (if-then-else expr)
+//
+//  INFIX EXPRESSION RULES (~14):
+//    Arithmetic (+,-,*,/), integer (div,mod), shift (shl,shr),
+//    logical (and,or,xor), comparison (=,<>,<,>,<=,>=),
+//    membership (in,is,as), function call, member access (.),
+//    array indexing ([]), pointer dereference (^)
+//
+//  STATEMENT RULES (~60):
+//    Program structure, declarations, control flow, exception handling,
+//    routines, type declarations (class, record, interface, enum, etc.),
+//    generics, external/forward declarations, exports
+//
+//  Operator precedence (Pascal-specific — and/or are NOT lowest!):
+//    Level 1 (highest): @, not, unary +/- -> power 90
+//    Level 2: *, /, div, mod, and, shl, shr, as -> power 30
+//    Level 3: +, -, or, xor -> power 20
+//    Level 4: =, <>, <, >, <=, >=, in, is -> power 10
+//    Level 5: conditional if..then..else -> power 2
+//    Assignment := -> handled as statement, not expression
+// ===========================================================================
+
+grammar {
+
+  // =========================================================================
+  //  PREFIX EXPRESSION RULES
+  // =========================================================================
+
+  // Identifier reference (variable, function name, type name)
+  rule expr.ident {
+    consume identifier -> @name;
+  }
+
+  // Integer numeric literal (REQUIRED by Metamorf)
+  rule expr.integer {
+    consume literal.integer -> @value;
+  }
+
+  // Float numeric literal (REQUIRED by Metamorf)
+  rule expr.float {
+    consume literal.float -> @value;
+  }
+
+  // Pascal single-quoted string literal
+  rule expr.sstring {
+    consume string.sstring -> @value;
+  }
+
+  // Boolean true
+  rule expr.bool_true {
+    expect keyword.true;
+  }
+
+  // Boolean false
+  rule expr.bool_false {
+    expect keyword.false;
+  }
+
+  // Nil literal
+  rule expr.nil {
+    expect keyword.nil;
+  }
+
+  // Parenthesized expression
+  rule expr.grouped {
+    expect delimiter.lparen;
+    parse expr -> @inner;
+    expect delimiter.rparen;
+  }
+
+  // Unary minus
+  rule expr.negate {
+    expect op.minus;
+    parse expr 90 -> @operand;
+  }
+
+  // Unary plus (no-op but valid syntax)
+  rule expr.pos {
+    expect op.plus;
+    parse expr 90 -> @operand;
+  }
+
+  // Logical NOT
+  rule expr.not {
+    expect keyword.not;
+    parse expr 90 -> @operand;
+  }
+
+  // Address-of operator @
+  rule expr.address_of {
+    expect op.at;
+    parse expr 90 -> @operand;
+  }
+
+  // Inherited keyword (calls parent method)
+  rule expr.inherited {
+    expect keyword.inherited;
+    let nd = getResultNode();
+    // inherited may be bare or followed by method name
+    if checkToken("identifier") {
+      setAttr(nd, "method_name", currentText());
+      advance();
+      // May be followed by arguments
+      if matchToken("delimiter.lparen") {
+        if not checkToken("delimiter.rparen") {
+          addChild(nd, parseExpr(0));
+          while matchToken("delimiter.comma") {
+            addChild(nd, parseExpr(0));
+          }
+        }
+        requireToken("delimiter.rparen");
+      }
+    }
+  }
+
+  // Set constructor: [elem, elem..elem, ...]
+  rule expr.set_constructor {
+    expect delimiter.lbracket;
+    let nd = getResultNode();
+    if not checkToken("delimiter.rbracket") {
+      let elem = parseExpr(0);
+      // Check for range: expr..expr
+      if matchToken("op.dotdot") {
+        let range = createNode("expr.set_range");
+        addChild(range, elem);
+        addChild(range, parseExpr(0));
+        addChild(nd, range);
+      } else {
+        addChild(nd, elem);
+      }
+      while matchToken("delimiter.comma") {
+        let elem2 = parseExpr(0);
+        if matchToken("op.dotdot") {
+          let range2 = createNode("expr.set_range");
+          addChild(range2, elem2);
+          addChild(range2, parseExpr(0));
+          addChild(nd, range2);
+        } else {
+          addChild(nd, elem2);
+        }
+      }
+    }
+    expect delimiter.rbracket;
+  }
+
+  // Anonymous method expression:
+  //   procedure [(params)] begin...end
+  //   function [(params)]: ReturnType begin...end
+  rule expr.anon_method {
+    let nd = getResultNode();
+    let isFunc = false;
+    if matchToken("keyword.function") {
+      isFunc = true;
+      setAttr(nd, "kind", "function");
+    } else {
+      expect keyword.procedure;
+      setAttr(nd, "kind", "procedure");
+    }
+
+    // Optional parameter list
+    if matchToken("delimiter.lparen") {
+      while not checkToken("delimiter.rparen") {
+        let p = createNode("stmt.param");
+        // Parameter mode: var, const, out
+        if matchToken("keyword.var") {
+          setAttr(p, "param.mode", "var");
+        } else {
+          if matchToken("keyword.const") {
+            setAttr(p, "param.mode", "const");
+          } else {
+            if matchToken("keyword.out") {
+              setAttr(p, "param.mode", "out");
+            } else {
+              setAttr(p, "param.mode", "value");
+            }
+          }
+        }
+        setAttr(p, "param.name", currentText());
+        advance();
+        if matchToken("delimiter.colon") {
+          setAttr(p, "param.type_text", currentText());
+          advance();
+        }
+        addChild(nd, p);
+        matchToken("delimiter.semicolon");
+      }
+      requireToken("delimiter.rparen");
+    }
+
+    // Return type for function
+    if isFunc {
+      requireToken("delimiter.colon");
+      setAttr(nd, "return_type", currentText());
+      advance();
+    }
+
+    // Body: begin...end
+    requireToken("keyword.begin");
+    let body = createNode("stmt.block");
+    while not checkToken("keyword.end") {
+      addChild(body, parseStmt());
+    }
+    requireToken("keyword.end");
+    addChild(nd, body);
+  }
+
+  // Conditional expression: if Cond then TrueExpr else FalseExpr
+  rule expr.conditional {
+    expect keyword.if;
+    parse expr -> @condition;
+    expect keyword.then;
+    parse expr -> @true_expr;
+    expect keyword.else;
+    parse expr -> @false_expr;
+  }
+
+  // Self reference
+  rule expr.self {
+    expect keyword.self;
+  }
+
+  // =========================================================================
+  //  INFIX EXPRESSION RULES
+  // =========================================================================
+
+  // Addition/subtraction: + - (precedence 20, additive level)
+  rule expr.add precedence left 20 {
+    consume [op.plus, op.minus] -> @operator;
+    parse expr -> @right;
+  }
+
+  // Multiplication/division: * / (precedence 30, multiplicative level)
+  rule expr.mul precedence left 30 {
+    consume [op.star, op.slash] -> @operator;
+    parse expr -> @right;
+  }
+
+  // Integer division and modulo: div mod (precedence 30)
+  rule expr.div_mod precedence left 30 {
+    consume [keyword.div, keyword.mod] -> @operator;
+    parse expr -> @right;
+  }
+
+  // Bit shift: shl shr (precedence 30, multiplicative level in Pascal)
+  rule expr.shift precedence left 30 {
+    consume [keyword.shl, keyword.shr] -> @operator;
+    parse expr -> @right;
+  }
+
+  // Logical AND (precedence 30 — multiplicative level in Pascal!)
+  rule expr.and precedence left 30 {
+    expect keyword.and;
+    parse expr -> @right;
+  }
+
+  // Logical OR and XOR (precedence 20 — additive level in Pascal!)
+  rule expr.or precedence left 20 {
+    consume [keyword.or, keyword.xor] -> @operator;
+    parse expr -> @right;
+  }
+
+  // Comparison operators: = <> < > <= >= (precedence 10)
+  rule expr.compare precedence left 10 {
+    consume [op.eq, op.neq, op.lt, op.gt, op.lte, op.gte] -> @operator;
+    parse expr -> @right;
+  }
+
+  // Set membership: in (precedence 10)
+  rule expr.in precedence left 10 {
+    expect keyword.in;
+    parse expr -> @right;
+  }
+
+  // Type test: is (precedence 10)
+  rule expr.is precedence left 10 {
+    expect keyword.is;
+    // Handle "is not" as a single operator
+    let nd = getResultNode();
+    if matchToken("keyword.not") {
+      setAttr(nd, "negated", "true");
+    }
+    parse expr -> @right;
+  }
+
+  // Type cast: as (precedence 30, multiplicative level)
+  rule expr.as precedence left 30 {
+    expect keyword.as;
+    parse expr -> @right;
+  }
+
+  // Function/procedure call: identifier(args)
+  rule expr.call precedence left 80 {
+    expect delimiter.lparen;
+    let nd = getResultNode();
+    if not checkToken("delimiter.rparen") {
+      addChild(nd, parseExpr(0));
+      while matchToken("delimiter.comma") {
+        addChild(nd, parseExpr(0));
+      }
+    }
+    expect delimiter.rparen;
+  }
+
+  // Member access: expr.field
+  rule expr.member precedence left 80 {
+    expect delimiter.dot;
+    consume identifier -> @member_name;
+  }
+
+  // Array indexing: expr[index]
+  rule expr.index precedence left 80 {
+    expect delimiter.lbracket;
+    let nd = getResultNode();
+    addChild(nd, parseExpr(0));
+    while matchToken("delimiter.comma") {
+      addChild(nd, parseExpr(0));
+    }
+    expect delimiter.rbracket;
+  }
+
+  // Pointer dereference: expr^
+  rule expr.deref precedence left 80 {
+    expect op.caret;
+  }
+
+  // =========================================================================
+  //  STATEMENT RULES — PROGRAM STRUCTURE
+  // =========================================================================
+
+  // program Name;
+  rule stmt.program {
+    expect keyword.program;
+    consume identifier -> @name;
+    // Optional parameter list: program Name(Input, Output);
+    if matchToken("delimiter.lparen") {
+      let nd = getResultNode();
+      while not checkToken("delimiter.rparen") {
+        let p = createNode("stmt.program_param");
+        setAttr(p, "name", currentText());
+        advance();
+        addChild(nd, p);
+        matchToken("delimiter.comma");
+      }
+      requireToken("delimiter.rparen");
+    }
+    expect delimiter.semicolon;
+  }
+
+  // unit Name;
+  rule stmt.unit {
+    expect keyword.unit;
+    // Unit name may be dotted: System.SysUtils
+    let nd = getResultNode();
+    let uname = currentText();
+    advance();
+    while matchToken("delimiter.dot") {
+      uname = uname + "." + currentText();
+      advance();
+    }
+    setAttr(nd, "name", uname);
+    requireToken("delimiter.semicolon");
+  }
+
+  // library Name;
+  rule stmt.library {
+    expect keyword.library;
+    consume identifier -> @name;
+    expect delimiter.semicolon;
+  }
+
+  // package Name;
+  rule stmt.package {
+    expect keyword.package;
+    consume identifier -> @name;
+    expect delimiter.semicolon;
+  }
+
+  // interface section
+  rule stmt.interface_section {
+    expect keyword.interface;
+  }
+
+  // implementation section
+  rule stmt.implementation_section {
+    expect keyword.implementation;
+  }
+
+  // initialization section
+  rule stmt.initialization_section {
+    expect keyword.initialization;
+    parse many stmt until [keyword.finalization, keyword.end] -> @body;
+  }
+
+  // finalization section
+  rule stmt.finalization_section {
+    expect keyword.finalization;
+    parse many stmt until keyword.end -> @body;
+  }
+
+  // uses clause: uses Unit1, Unit2 in 'path', Unit3;
+  rule stmt.uses {
+    expect keyword.uses;
+    let nd = getResultNode();
+    // Parse first unit reference
+    let uname = currentText();
+    advance();
+    while checkToken("delimiter.dot") {
+      advance();
+      uname = uname + "." + currentText();
+      advance();
+    }
+    let u = createNode("stmt.uses_item");
+    setAttr(u, "unit.name", uname);
+    // Optional: in 'filename'
+    if matchToken("keyword.in") {
+      setAttr(u, "in_file", currentText());
+      advance();
+    }
+    addChild(nd, u);
+    // Parse remaining units
+    while matchToken("delimiter.comma") {
+      let uname2 = currentText();
+      advance();
+      while checkToken("delimiter.dot") {
+        advance();
+        uname2 = uname2 + "." + currentText();
+        advance();
+      }
+      let u2 = createNode("stmt.uses_item");
+      setAttr(u2, "unit.name", uname2);
+      if matchToken("keyword.in") {
+        setAttr(u2, "in_file", currentText());
+        advance();
+      }
+      addChild(nd, u2);
+    }
+    requireToken("delimiter.semicolon");
+  }
+
+  // requires clause (packages): requires Unit1, Unit2;
+  rule stmt.requires {
+    expect keyword.requires;
+    let nd = getResultNode();
+    let rname = currentText();
+    advance();
+    let r = createNode("stmt.requires_item");
+    setAttr(r, "name", rname);
+    addChild(nd, r);
+    while matchToken("delimiter.comma") {
+      let rname2 = currentText();
+      advance();
+      let r2 = createNode("stmt.requires_item");
+      setAttr(r2, "name", rname2);
+      addChild(nd, r2);
+    }
+    requireToken("delimiter.semicolon");
+  }
+
+  // contains clause (packages): contains Unit1 in 'path';
+  rule stmt.contains {
+    expect keyword.contains;
+    let nd = getResultNode();
+    let cname = currentText();
+    advance();
+    let c = createNode("stmt.contains_item");
+    setAttr(c, "name", cname);
+    if matchToken("keyword.in") {
+      setAttr(c, "in_file", currentText());
+      advance();
+    }
+    addChild(nd, c);
+    while matchToken("delimiter.comma") {
+      let cname2 = currentText();
+      advance();
+      let c2 = createNode("stmt.contains_item");
+      setAttr(c2, "name", cname2);
+      if matchToken("keyword.in") {
+        setAttr(c2, "in_file", currentText());
+        advance();
+      }
+      addChild(nd, c2);
+    }
+    requireToken("delimiter.semicolon");
+  }
+
+  // Main block: begin ... end.
+  rule stmt.main_block {
+    expect keyword.begin;
+    parse many stmt until keyword.end -> @body;
+    expect keyword.end;
+    matchToken("delimiter.dot");
+  }
+
+  // =========================================================================
+  //  STATEMENT RULES — DECLARATIONS
+  // =========================================================================
+
+  // const section: const Name = Value; Name: Type = Value;
+  rule stmt.const_section {
+    expect keyword.const;
+    let nd = getResultNode();
+    let more = true;
+    while more {
+      if not checkToken("identifier") { more = false; }
+      if checkToken("keyword.var") { more = false; }
+      if checkToken("keyword.const") { more = false; }
+      if checkToken("keyword.type") { more = false; }
+      if checkToken("keyword.begin") { more = false; }
+      if checkToken("keyword.function") { more = false; }
+      if checkToken("keyword.procedure") { more = false; }
+      if checkToken("keyword.constructor") { more = false; }
+      if checkToken("keyword.destructor") { more = false; }
+      if checkToken("keyword.class") { more = false; }
+      if checkToken("keyword.end") { more = false; }
+      if checkToken("keyword.implementation") { more = false; }
+      if checkToken("keyword.initialization") { more = false; }
+      if checkToken("keyword.finalization") { more = false; }
+      if checkToken("keyword.resourcestring") { more = false; }
+      if checkToken("keyword.threadvar") { more = false; }
+      if checkToken("keyword.label") { more = false; }
+      if checkToken("keyword.exports") { more = false; }
+      if checkToken("keyword.uses") { more = false; }
+
+      if more {
+        let c = createNode("stmt.const_decl");
+        setAttr(c, "cname", currentText());
+        advance();
+        // Typed constant: Name: Type = Value
+        if matchToken("delimiter.colon") {
+          setAttr(c, "ctype", currentText());
+          advance();
+        }
+        requireToken("op.eq");
+        addChild(c, parseExpr(0));
+        // Optional portability directive
+        if matchToken("keyword.deprecated") {
+          setAttr(c, "deprecated", "true");
+        }
+        if matchToken("keyword.platform") {
+          setAttr(c, "platform", "true");
+        }
+        if matchToken("keyword.experimental") {
+          setAttr(c, "experimental", "true");
+        }
+        requireToken("delimiter.semicolon");
+        addChild(nd, c);
+      }
+    }
+  }
+
+  // type section: type Name = TypeDef;
+  rule stmt.type_section {
+    expect keyword.type;
+    let nd = getResultNode();
+    let more = true;
+    while more {
+      if not checkToken("identifier") { more = false; }
+      if checkToken("keyword.var") { more = false; }
+      if checkToken("keyword.const") { more = false; }
+      if checkToken("keyword.type") { more = false; }
+      if checkToken("keyword.begin") { more = false; }
+      if checkToken("keyword.function") { more = false; }
+      if checkToken("keyword.procedure") { more = false; }
+      if checkToken("keyword.end") { more = false; }
+      if checkToken("keyword.implementation") { more = false; }
+      if checkToken("keyword.initialization") { more = false; }
+      if checkToken("keyword.finalization") { more = false; }
+      if checkToken("keyword.resourcestring") { more = false; }
+      if checkToken("keyword.threadvar") { more = false; }
+      if checkToken("keyword.label") { more = false; }
+      if checkToken("keyword.exports") { more = false; }
+      if checkToken("keyword.uses") { more = false; }
+
+      if more {
+        // Parse: [Attributes] Ident [<GenericParams>] = [type] TypeDef ;
+        let typeName = currentText();
+        advance();
+
+        // Check for generic type parameters: TMyType<T>
+        let hasGenerics = false;
+        let genericParams = "";
+        if checkToken("op.lt") {
+          // This could be a generic declaration: TFoo<T: constraint>
+          advance();
+          hasGenerics = true;
+          genericParams = currentText();
+          advance();
+          // Parse constraints and additional params
+          while matchToken("delimiter.comma") {
+            genericParams = genericParams + "," + currentText();
+            advance();
+            // Skip constraint: T: class, T: IInterface
+            if matchToken("delimiter.colon") {
+              advance(); // skip constraint type
+            }
+          }
+          requireToken("op.gt");
+        }
+
+        requireToken("op.eq");
+
+        // Determine what kind of type declaration this is
+        if checkToken("keyword.class") {
+          // Could be: class, class of, class(Parent), class;
+          advance();
+          if checkToken("delimiter.semicolon") {
+            // Forward declaration: TFoo = class;
+            let fwd = createNode("stmt.class_forward");
+            setAttr(fwd, "type_name", typeName);
+            if hasGenerics {
+              setAttr(fwd, "generic_params", genericParams);
+            }
+            addChild(nd, fwd);
+            requireToken("delimiter.semicolon");
+          } else {
+            if matchToken("keyword.of") {
+              // Class reference: TFooClass = class of TFoo;
+              let cref = createNode("stmt.class_ref_decl");
+              setAttr(cref, "type_name", typeName);
+              setAttr(cref, "ref_type", currentText());
+              advance();
+              requireToken("delimiter.semicolon");
+              addChild(nd, cref);
+            } else {
+              // Full class declaration
+              let cls = createNode("stmt.class_decl");
+              setAttr(cls, "type_name", typeName);
+              if hasGenerics {
+                setAttr(cls, "generic_params", genericParams);
+              }
+
+              // Check for abstract/sealed
+              if matchToken("keyword.abstract") {
+                setAttr(cls, "is_abstract", "true");
+              }
+              if matchToken("keyword.sealed") {
+                setAttr(cls, "is_sealed", "true");
+              }
+
+              // Optional heritage: (TParent, IInterface1, IInterface2)
+              if matchToken("delimiter.lparen") {
+                let heritage = currentText();
+                advance();
+                while matchToken("delimiter.comma") {
+                  heritage = heritage + "," + currentText();
+                  advance();
+                }
+                requireToken("delimiter.rparen");
+                setAttr(cls, "heritage", heritage);
+              }
+
+              // Check for class helper for Type
+              if matchToken("keyword.helper") {
+                requireToken("keyword.for");
+                setAttr(cls, "helper_for", currentText());
+                advance();
+              }
+
+              // Parse class body until 'end'
+              let currentVis = "published";
+              while not checkToken("keyword.end") {
+                // Check for visibility specifier
+                if matchToken("keyword.strict") {
+                  if matchToken("keyword.private") {
+                    currentVis = "strict private";
+                  } else {
+                    if matchToken("keyword.protected") {
+                      currentVis = "strict protected";
+                    }
+                  }
+                } else {
+                  if matchToken("keyword.private") {
+                    currentVis = "private";
+                  } else {
+                    if matchToken("keyword.protected") {
+                      currentVis = "protected";
+                    } else {
+                      if matchToken("keyword.public") {
+                        currentVis = "public";
+                      } else {
+                        if matchToken("keyword.published") {
+                          currentVis = "published";
+                        } else {
+                          // Parse class member
+                          if checkToken("keyword.procedure") or checkToken("keyword.function") or checkToken("keyword.constructor") or checkToken("keyword.destructor") {
+                            // Method declaration
+                            let method = createNode("stmt.method_decl");
+                            setAttr(method, "visibility", currentVis);
+                            let isClassMethod = false;
+                            if checkToken("keyword.class") {
+                              advance();
+                              isClassMethod = true;
+                              setAttr(method, "is_class_method", "true");
+                            }
+                            if matchToken("keyword.function") {
+                              setAttr(method, "method_kind", "function");
+                            } else {
+                              if matchToken("keyword.procedure") {
+                                setAttr(method, "method_kind", "procedure");
+                              } else {
+                                if matchToken("keyword.constructor") {
+                                  setAttr(method, "method_kind", "constructor");
+                                } else {
+                                  if matchToken("keyword.destructor") {
+                                    setAttr(method, "method_kind", "destructor");
+                                  }
+                                }
+                              }
+                            }
+                            setAttr(method, "method_name", currentText());
+                            advance();
+
+                            // Optional generic params
+                            if checkToken("op.lt") {
+                              advance();
+                              let mgen = currentText();
+                              advance();
+                              while matchToken("delimiter.comma") {
+                                mgen = mgen + "," + currentText();
+                                advance();
+                              }
+                              requireToken("op.gt");
+                              setAttr(method, "generic_params", mgen);
+                            }
+
+                            // Optional parameter list
+                            if matchToken("delimiter.lparen") {
+                              while not checkToken("delimiter.rparen") {
+                                let mp = createNode("stmt.param");
+                                if matchToken("keyword.var") {
+                                  setAttr(mp, "param.mode", "var");
+                                } else {
+                                  if matchToken("keyword.const") {
+                                    if matchToken("delimiter.lbracket") {
+                                      requireToken("keyword.reference");
+                                      requireToken("delimiter.rbracket");
+                                      setAttr(mp, "param.mode", "constref");
+                                    } else {
+                                      setAttr(mp, "param.mode", "const");
+                                    }
+                                  } else {
+                                    if matchToken("keyword.out") {
+                                      setAttr(mp, "param.mode", "out");
+                                    } else {
+                                      setAttr(mp, "param.mode", "value");
+                                    }
+                                  }
+                                }
+                                setAttr(mp, "param.name", currentText());
+                                advance();
+                                if matchToken("delimiter.colon") {
+                                  // Parse type (may be complex: array of T, etc.)
+                                  setAttr(mp, "param.type_text", currentText());
+                                  advance();
+                                }
+                                // Optional default value
+                                if matchToken("op.eq") {
+                                  addChild(mp, parseExpr(0));
+                                }
+                                addChild(method, mp);
+                                matchToken("delimiter.semicolon");
+                              }
+                              requireToken("delimiter.rparen");
+                            }
+
+                            // Return type for functions
+                            if matchToken("delimiter.colon") {
+                              setAttr(method, "return_type", currentText());
+                              advance();
+                            }
+                            requireToken("delimiter.semicolon");
+
+                            // Method directives
+                            let parseDirs = true;
+                            while parseDirs {
+                              if matchToken("keyword.virtual") {
+                                setAttr(method, "is_virtual", "true");
+                                matchToken("delimiter.semicolon");
+                              } else {
+                                if matchToken("keyword.override") {
+                                  setAttr(method, "is_override", "true");
+                                  matchToken("delimiter.semicolon");
+                                } else {
+                                  if matchToken("keyword.abstract") {
+                                    setAttr(method, "is_abstract", "true");
+                                    matchToken("delimiter.semicolon");
+                                  } else {
+                                    if matchToken("keyword.dynamic") {
+                                      setAttr(method, "is_dynamic", "true");
+                                      matchToken("delimiter.semicolon");
+                                    } else {
+                                      if matchToken("keyword.reintroduce") {
+                                        setAttr(method, "is_reintroduce", "true");
+                                        matchToken("delimiter.semicolon");
+                                      } else {
+                                        if matchToken("keyword.final") {
+                                          setAttr(method, "is_final", "true");
+                                          matchToken("delimiter.semicolon");
+                                        } else {
+                                          if matchToken("keyword.static") {
+                                            setAttr(method, "is_static", "true");
+                                            matchToken("delimiter.semicolon");
+                                          } else {
+                                            if matchToken("keyword.overload") {
+                                              setAttr(method, "is_overload", "true");
+                                              matchToken("delimiter.semicolon");
+                                            } else {
+                                              if matchToken("keyword.inline") {
+                                                setAttr(method, "is_inline", "true");
+                                                matchToken("delimiter.semicolon");
+                                              } else {
+                                                if matchToken("keyword.cdecl") {
+                                                  setAttr(method, "calling_conv", "cdecl");
+                                                  matchToken("delimiter.semicolon");
+                                                } else {
+                                                  if matchToken("keyword.stdcall") {
+                                                    setAttr(method, "calling_conv", "stdcall");
+                                                    matchToken("delimiter.semicolon");
+                                                  } else {
+                                                    if matchToken("keyword.safecall") {
+                                                      setAttr(method, "calling_conv", "safecall");
+                                                      matchToken("delimiter.semicolon");
+                                                    } else {
+                                                      if matchToken("keyword.register") {
+                                                        setAttr(method, "calling_conv", "register");
+                                                        matchToken("delimiter.semicolon");
+                                                      } else {
+                                                        if matchToken("keyword.winapi") {
+                                                          setAttr(method, "calling_conv", "winapi");
+                                                          matchToken("delimiter.semicolon");
+                                                        } else {
+                                                          if matchToken("keyword.message") {
+                                                            setAttr(method, "is_message", "true");
+                                                            setAttr(method, "message_id", currentText());
+                                                            advance();
+                                                            matchToken("delimiter.semicolon");
+                                                          } else {
+                                                            if matchToken("keyword.deprecated") {
+                                                              setAttr(method, "deprecated", "true");
+                                                              matchToken("delimiter.semicolon");
+                                                            } else {
+                                                              if matchToken("keyword.noreturn") {
+                                                                setAttr(method, "is_noreturn", "true");
+                                                                matchToken("delimiter.semicolon");
+                                                              } else {
+                                                                parseDirs = false;
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            addChild(cls, method);
+                          } else {
+                            if checkToken("keyword.property") {
+                              // Property declaration
+                              advance();
+                              let prop = createNode("stmt.property_decl");
+                              setAttr(prop, "visibility", currentVis);
+                              setAttr(prop, "prop_name", currentText());
+                              advance();
+
+                              // Optional index params: property Items[Index: Integer]: T
+                              if matchToken("delimiter.lbracket") {
+                                let idxParams = "";
+                                while not checkToken("delimiter.rbracket") {
+                                  idxParams = idxParams + currentText();
+                                  advance();
+                                }
+                                requireToken("delimiter.rbracket");
+                                setAttr(prop, "index_params", idxParams);
+                              }
+
+                              // Type: property Name: Type
+                              if matchToken("delimiter.colon") {
+                                setAttr(prop, "prop_type", currentText());
+                                advance();
+                              }
+
+                              // Property specifiers
+                              let parseSpecs = true;
+                              while parseSpecs {
+                                if matchToken("keyword.read") {
+                                  setAttr(prop, "reader", currentText());
+                                  advance();
+                                } else {
+                                  if matchToken("keyword.write") {
+                                    setAttr(prop, "writer", currentText());
+                                    advance();
+                                  } else {
+                                    if matchToken("keyword.stored") {
+                                      setAttr(prop, "stored", currentText());
+                                      advance();
+                                    } else {
+                                      if matchToken("keyword.default") {
+                                        setAttr(prop, "default_value", currentText());
+                                        advance();
+                                      } else {
+                                        if matchToken("keyword.nodefault") {
+                                          setAttr(prop, "nodefault", "true");
+                                        } else {
+                                          if matchToken("keyword.index") {
+                                            setAttr(prop, "index_value", currentText());
+                                            advance();
+                                          } else {
+                                            if matchToken("keyword.implements") {
+                                              setAttr(prop, "implements", currentText());
+                                              advance();
+                                            } else {
+                                              if matchToken("keyword.dispid") {
+                                                setAttr(prop, "dispid", currentText());
+                                                advance();
+                                              } else {
+                                                parseSpecs = false;
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                              requireToken("delimiter.semicolon");
+
+                              // Check for 'default;' (default array property)
+                              if matchToken("keyword.default") {
+                                setAttr(prop, "is_default_prop", "true");
+                                requireToken("delimiter.semicolon");
+                              }
+
+                              addChild(cls, prop);
+                            } else {
+                              if checkToken("keyword.class") {
+                                // class var, class function, class procedure, class property, class operator
+                                advance();
+                                if matchToken("keyword.var") {
+                                  // class var section
+                                  while checkToken("identifier") {
+                                    let cv = createNode("stmt.class_var");
+                                    setAttr(cv, "visibility", currentVis);
+                                    setAttr(cv, "vname", currentText());
+                                    advance();
+                                    requireToken("delimiter.colon");
+                                    setAttr(cv, "vtype", currentText());
+                                    advance();
+                                    requireToken("delimiter.semicolon");
+                                    addChild(cls, cv);
+                                  }
+                                } else {
+                                  if checkToken("keyword.function") or checkToken("keyword.procedure") or checkToken("keyword.constructor") or checkToken("keyword.destructor") {
+                                    // Push back and re-parse as method with class prefix
+                                    // We handle this by setting is_class_method flag
+                                    let cm = createNode("stmt.method_decl");
+                                    setAttr(cm, "visibility", currentVis);
+                                    setAttr(cm, "is_class_method", "true");
+                                    if matchToken("keyword.function") {
+                                      setAttr(cm, "method_kind", "function");
+                                    } else {
+                                      if matchToken("keyword.procedure") {
+                                        setAttr(cm, "method_kind", "procedure");
+                                      } else {
+                                        if matchToken("keyword.constructor") {
+                                          setAttr(cm, "method_kind", "constructor");
+                                        } else {
+                                          if matchToken("keyword.destructor") {
+                                            setAttr(cm, "method_kind", "destructor");
+                                          }
+                                        }
+                                      }
+                                    }
+                                    setAttr(cm, "method_name", currentText());
+                                    advance();
+                                    // Params
+                                    if matchToken("delimiter.lparen") {
+                                      while not checkToken("delimiter.rparen") {
+                                        let cp = createNode("stmt.param");
+                                        if matchToken("keyword.var") { setAttr(cp, "param.mode", "var"); }
+                                        else { if matchToken("keyword.const") { setAttr(cp, "param.mode", "const"); }
+                                        else { if matchToken("keyword.out") { setAttr(cp, "param.mode", "out"); }
+                                        else { setAttr(cp, "param.mode", "value"); } } }
+                                        setAttr(cp, "param.name", currentText());
+                                        advance();
+                                        if matchToken("delimiter.colon") {
+                                          setAttr(cp, "param.type_text", currentText());
+                                          advance();
+                                        }
+                                        addChild(cm, cp);
+                                        matchToken("delimiter.semicolon");
+                                      }
+                                      requireToken("delimiter.rparen");
+                                    }
+                                    if matchToken("delimiter.colon") {
+                                      setAttr(cm, "return_type", currentText());
+                                      advance();
+                                    }
+                                    requireToken("delimiter.semicolon");
+                                    // Directives
+                                    if matchToken("keyword.static") {
+                                      setAttr(cm, "is_static", "true");
+                                      matchToken("delimiter.semicolon");
+                                    }
+                                    if matchToken("keyword.overload") {
+                                      setAttr(cm, "is_overload", "true");
+                                      matchToken("delimiter.semicolon");
+                                    }
+                                    if matchToken("keyword.inline") {
+                                      setAttr(cm, "is_inline", "true");
+                                      matchToken("delimiter.semicolon");
+                                    }
+                                    addChild(cls, cm);
+                                  } else {
+                                    if matchToken("keyword.operator") {
+                                      // class operator declaration
+                                      let cop = createNode("stmt.operator_decl");
+                                      setAttr(cop, "visibility", currentVis);
+                                      setAttr(cop, "op_name", currentText());
+                                      advance();
+                                      if matchToken("delimiter.lparen") {
+                                        while not checkToken("delimiter.rparen") {
+                                          let opp = createNode("stmt.param");
+                                          setAttr(opp, "param.mode", "value");
+                                          setAttr(opp, "param.name", currentText());
+                                          advance();
+                                          if matchToken("delimiter.colon") {
+                                            setAttr(opp, "param.type_text", currentText());
+                                            advance();
+                                          }
+                                          addChild(cop, opp);
+                                          matchToken("delimiter.semicolon");
+                                        }
+                                        requireToken("delimiter.rparen");
+                                      }
+                                      if matchToken("delimiter.colon") {
+                                        setAttr(cop, "return_type", currentText());
+                                        advance();
+                                      }
+                                      requireToken("delimiter.semicolon");
+                                      addChild(cls, cop);
+                                    } else {
+                                      if matchToken("keyword.property") {
+                                        // class property
+                                        let cprop = createNode("stmt.property_decl");
+                                        setAttr(cprop, "visibility", currentVis);
+                                        setAttr(cprop, "is_class_prop", "true");
+                                        setAttr(cprop, "prop_name", currentText());
+                                        advance();
+                                        if matchToken("delimiter.colon") {
+                                          setAttr(cprop, "prop_type", currentText());
+                                          advance();
+                                        }
+                                        let parseSpecs2 = true;
+                                        while parseSpecs2 {
+                                          if matchToken("keyword.read") { setAttr(cprop, "reader", currentText()); advance(); }
+                                          else { if matchToken("keyword.write") { setAttr(cprop, "writer", currentText()); advance(); }
+                                          else { parseSpecs2 = false; } }
+                                        }
+                                        requireToken("delimiter.semicolon");
+                                        addChild(cls, cprop);
+                                      }
+                                    }
+                                  }
+                                }
+                              } else {
+                                if matchToken("keyword.const") {
+                                  // class constants within class body
+                                  while checkToken("identifier") {
+                                    let cc = createNode("stmt.class_const");
+                                    setAttr(cc, "visibility", currentVis);
+                                    setAttr(cc, "cname", currentText());
+                                    advance();
+                                    if matchToken("delimiter.colon") {
+                                      setAttr(cc, "ctype", currentText());
+                                      advance();
+                                    }
+                                    requireToken("op.eq");
+                                    addChild(cc, parseExpr(0));
+                                    requireToken("delimiter.semicolon");
+                                    addChild(cls, cc);
+                                  }
+                                } else {
+                                  if matchToken("keyword.type") {
+                                    // nested type declarations within class body
+                                    while checkToken("identifier") {
+                                      let nt = createNode("stmt.nested_type");
+                                      setAttr(nt, "visibility", currentVis);
+                                      setAttr(nt, "type_name", currentText());
+                                      advance();
+                                      requireToken("op.eq");
+                                      // Simple nested type: just consume until semicolon
+                                      setAttr(nt, "type_def", currentText());
+                                      advance();
+                                      requireToken("delimiter.semicolon");
+                                      addChild(cls, nt);
+                                    }
+                                  } else {
+                                    if checkToken("identifier") {
+                                      // Field declaration
+                                      let field = createNode("stmt.field_decl");
+                                      setAttr(field, "visibility", currentVis);
+                                      let fname = currentText();
+                                      advance();
+                                      // Multiple fields: F1, F2: Type;
+                                      let fieldNames = fname;
+                                      while matchToken("delimiter.comma") {
+                                        fieldNames = fieldNames + "," + currentText();
+                                        advance();
+                                      }
+                                      setAttr(field, "field_names", fieldNames);
+                                      requireToken("delimiter.colon");
+                                      setAttr(field, "field_type", currentText());
+                                      advance();
+                                      requireToken("delimiter.semicolon");
+                                      addChild(cls, field);
+                                    } else {
+                                      // Unknown token in class body — skip
+                                      advance();
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              requireToken("keyword.end");
+              requireToken("delimiter.semicolon");
+              addChild(nd, cls);
+            }
+          }
+        } else {
+          if checkToken("keyword.interface") {
+            // Interface declaration
+            advance();
+            if checkToken("delimiter.semicolon") {
+              // Forward: IFoo = interface;
+              let ifwd = createNode("stmt.interface_forward");
+              setAttr(ifwd, "type_name", typeName);
+              requireToken("delimiter.semicolon");
+              addChild(nd, ifwd);
+            } else {
+              let iface = createNode("stmt.interface_decl");
+              setAttr(iface, "type_name", typeName);
+
+              // Heritage: (IParent)
+              if matchToken("delimiter.lparen") {
+                setAttr(iface, "parent", currentText());
+                advance();
+                requireToken("delimiter.rparen");
+              }
+
+              // GUID: ['{...}']
+              if matchToken("delimiter.lbracket") {
+                setAttr(iface, "guid", currentText());
+                advance();
+                requireToken("delimiter.rbracket");
+              }
+
+              // Interface members until 'end'
+              while not checkToken("keyword.end") {
+                if checkToken("keyword.function") or checkToken("keyword.procedure") {
+                  let im = createNode("stmt.interface_method");
+                  if matchToken("keyword.function") {
+                    setAttr(im, "method_kind", "function");
+                  } else {
+                    expect keyword.procedure;
+                    setAttr(im, "method_kind", "procedure");
+                  }
+                  setAttr(im, "method_name", currentText());
+                  advance();
+                  // Params
+                  if matchToken("delimiter.lparen") {
+                    while not checkToken("delimiter.rparen") {
+                      let ip = createNode("stmt.param");
+                      if matchToken("keyword.var") { setAttr(ip, "param.mode", "var"); }
+                      else { if matchToken("keyword.const") { setAttr(ip, "param.mode", "const"); }
+                      else { if matchToken("keyword.out") { setAttr(ip, "param.mode", "out"); }
+                      else { setAttr(ip, "param.mode", "value"); } } }
+                      setAttr(ip, "param.name", currentText());
+                      advance();
+                      if matchToken("delimiter.colon") {
+                        setAttr(ip, "param.type_text", currentText());
+                        advance();
+                      }
+                      addChild(im, ip);
+                      matchToken("delimiter.semicolon");
+                    }
+                    requireToken("delimiter.rparen");
+                  }
+                  if matchToken("delimiter.colon") {
+                    setAttr(im, "return_type", currentText());
+                    advance();
+                  }
+                  requireToken("delimiter.semicolon");
+                  // Calling convention
+                  if matchToken("keyword.cdecl") { setAttr(im, "calling_conv", "cdecl"); matchToken("delimiter.semicolon"); }
+                  if matchToken("keyword.stdcall") { setAttr(im, "calling_conv", "stdcall"); matchToken("delimiter.semicolon"); }
+                  if matchToken("keyword.safecall") { setAttr(im, "calling_conv", "safecall"); matchToken("delimiter.semicolon"); }
+                  addChild(iface, im);
+                } else {
+                  if matchToken("keyword.property") {
+                    let iprop = createNode("stmt.property_decl");
+                    setAttr(iprop, "prop_name", currentText());
+                    advance();
+                    if matchToken("delimiter.colon") {
+                      setAttr(iprop, "prop_type", currentText());
+                      advance();
+                    }
+                    if matchToken("keyword.read") { setAttr(iprop, "reader", currentText()); advance(); }
+                    if matchToken("keyword.write") { setAttr(iprop, "writer", currentText()); advance(); }
+                    requireToken("delimiter.semicolon");
+                    addChild(iface, iprop);
+                  } else {
+                    advance(); // skip unknown
+                  }
+                }
+              }
+              requireToken("keyword.end");
+              requireToken("delimiter.semicolon");
+              addChild(nd, iface);
+            }
+          } else {
+            if checkToken("keyword.dispinterface") {
+              // Dispinterface declaration
+              advance();
+              let disp = createNode("stmt.dispinterface_decl");
+              setAttr(disp, "type_name", typeName);
+              // GUID
+              if matchToken("delimiter.lbracket") {
+                setAttr(disp, "guid", currentText());
+                advance();
+                requireToken("delimiter.rbracket");
+              }
+              // Members until 'end'
+              while not checkToken("keyword.end") {
+                advance(); // simplified: consume tokens until end
+              }
+              requireToken("keyword.end");
+              requireToken("delimiter.semicolon");
+              addChild(nd, disp);
+            } else {
+              if checkToken("keyword.record") {
+                // Record declaration (including advanced records)
+                advance();
+                let rec = createNode("stmt.record_decl");
+                setAttr(rec, "type_name", typeName);
+                if hasGenerics {
+                  setAttr(rec, "generic_params", genericParams);
+                }
+
+                // Check for record helper
+                if matchToken("keyword.helper") {
+                  requireToken("keyword.for");
+                  setAttr(rec, "helper_for", currentText());
+                  advance();
+                }
+
+                // Parse record body until 'end'
+                let recVis = "public";
+                while not checkToken("keyword.end") {
+                  // Visibility specifiers in advanced records
+                  if matchToken("keyword.strict") {
+                    if matchToken("keyword.private") { recVis = "strict private"; }
+                    else { if matchToken("keyword.protected") { recVis = "strict protected"; } }
+                  } else {
+                    if matchToken("keyword.private") { recVis = "private"; }
+                    else { if matchToken("keyword.public") { recVis = "public"; }
+                    else {
+                      // Methods in advanced records
+                      if checkToken("keyword.function") or checkToken("keyword.procedure") or checkToken("keyword.constructor") {
+                        let rm = createNode("stmt.method_decl");
+                        setAttr(rm, "visibility", recVis);
+                        if matchToken("keyword.function") { setAttr(rm, "method_kind", "function"); }
+                        else { if matchToken("keyword.procedure") { setAttr(rm, "method_kind", "procedure"); }
+                        else { expect keyword.constructor; setAttr(rm, "method_kind", "constructor"); } }
+                        setAttr(rm, "method_name", currentText());
+                        advance();
+                        if matchToken("delimiter.lparen") {
+                          while not checkToken("delimiter.rparen") {
+                            let rp = createNode("stmt.param");
+                            if matchToken("keyword.var") { setAttr(rp, "param.mode", "var"); }
+                            else { if matchToken("keyword.const") { setAttr(rp, "param.mode", "const"); }
+                            else { if matchToken("keyword.out") { setAttr(rp, "param.mode", "out"); }
+                            else { setAttr(rp, "param.mode", "value"); } } }
+                            setAttr(rp, "param.name", currentText());
+                            advance();
+                            if matchToken("delimiter.colon") { setAttr(rp, "param.type_text", currentText()); advance(); }
+                            addChild(rm, rp);
+                            matchToken("delimiter.semicolon");
+                          }
+                          requireToken("delimiter.rparen");
+                        }
+                        if matchToken("delimiter.colon") { setAttr(rm, "return_type", currentText()); advance(); }
+                        requireToken("delimiter.semicolon");
+                        // Directives
+                        if matchToken("keyword.overload") { setAttr(rm, "is_overload", "true"); matchToken("delimiter.semicolon"); }
+                        if matchToken("keyword.static") { setAttr(rm, "is_static", "true"); matchToken("delimiter.semicolon"); }
+                        if matchToken("keyword.inline") { setAttr(rm, "is_inline", "true"); matchToken("delimiter.semicolon"); }
+                        addChild(rec, rm);
+                      } else {
+                        if checkToken("keyword.class") {
+                          // class operator in record
+                          advance();
+                          if matchToken("keyword.operator") {
+                            let rop = createNode("stmt.operator_decl");
+                            setAttr(rop, "visibility", recVis);
+                            setAttr(rop, "op_name", currentText());
+                            advance();
+                            if matchToken("delimiter.lparen") {
+                              while not checkToken("delimiter.rparen") {
+                                let opp2 = createNode("stmt.param");
+                                setAttr(opp2, "param.mode", "value");
+                                setAttr(opp2, "param.name", currentText());
+                                advance();
+                                if matchToken("delimiter.colon") { setAttr(opp2, "param.type_text", currentText()); advance(); }
+                                addChild(rop, opp2);
+                                matchToken("delimiter.semicolon");
+                              }
+                              requireToken("delimiter.rparen");
+                            }
+                            if matchToken("delimiter.colon") { setAttr(rop, "return_type", currentText()); advance(); }
+                            requireToken("delimiter.semicolon");
+                            addChild(rec, rop);
+                          }
+                        } else {
+                          if matchToken("keyword.property") {
+                            // property in record
+                            let rprop = createNode("stmt.property_decl");
+                            setAttr(rprop, "visibility", recVis);
+                            setAttr(rprop, "prop_name", currentText());
+                            advance();
+                            if matchToken("delimiter.colon") { setAttr(rprop, "prop_type", currentText()); advance(); }
+                            if matchToken("keyword.read") { setAttr(rprop, "reader", currentText()); advance(); }
+                            if matchToken("keyword.write") { setAttr(rprop, "writer", currentText()); advance(); }
+                            requireToken("delimiter.semicolon");
+                            addChild(rec, rprop);
+                          } else {
+                            if matchToken("keyword.case") {
+                              // Variant part of record
+                              let vp = createNode("stmt.variant_part");
+                              // case [Ident:] OrdinalType of
+                              setAttr(vp, "tag_type", currentText());
+                              advance();
+                              if matchToken("delimiter.colon") {
+                                setAttr(vp, "tag_name", getAttr(vp, "tag_type"));
+                                setAttr(vp, "tag_type", currentText());
+                                advance();
+                              }
+                              requireToken("keyword.of");
+                              // Parse variants until 'end' or ')' closing
+                              while not checkToken("keyword.end") {
+                                // value-list : ( fields )
+                                let variant = createNode("stmt.variant");
+                                addChild(variant, parseExpr(0));
+                                while matchToken("delimiter.comma") {
+                                  addChild(variant, parseExpr(0));
+                                }
+                                requireToken("delimiter.colon");
+                                requireToken("delimiter.lparen");
+                                while not checkToken("delimiter.rparen") {
+                                  let vf = createNode("stmt.field_decl");
+                                  setAttr(vf, "field_names", currentText());
+                                  advance();
+                                  while matchToken("delimiter.comma") {
+                                    setAttr(vf, "field_names", getAttr(vf, "field_names") + "," + currentText());
+                                    advance();
+                                  }
+                                  requireToken("delimiter.colon");
+                                  setAttr(vf, "field_type", currentText());
+                                  advance();
+                                  addChild(variant, vf);
+                                  matchToken("delimiter.semicolon");
+                                }
+                                requireToken("delimiter.rparen");
+                                matchToken("delimiter.semicolon");
+                                addChild(vp, variant);
+                              }
+                              addChild(rec, vp);
+                            } else {
+                              if checkToken("identifier") {
+                                // Field declaration
+                                let rf = createNode("stmt.field_decl");
+                                setAttr(rf, "visibility", recVis);
+                                let rfname = currentText();
+                                advance();
+                                while matchToken("delimiter.comma") {
+                                  rfname = rfname + "," + currentText();
+                                  advance();
+                                }
+                                setAttr(rf, "field_names", rfname);
+                                requireToken("delimiter.colon");
+                                setAttr(rf, "field_type", currentText());
+                                advance();
+                                requireToken("delimiter.semicolon");
+                                addChild(rec, rf);
+                              } else {
+                                advance(); // skip
+                              }
+                            }
+                          }
+                        }
+                      }
+                    } }
+                  }
+                }
+                requireToken("keyword.end");
+                // Optional align directive
+                if matchToken("keyword.align") {
+                  setAttr(rec, "alignment", currentText());
+                  advance();
+                }
+                requireToken("delimiter.semicolon");
+                addChild(nd, rec);
+              } else {
+                if checkToken("keyword.packed") {
+                  // packed record or packed array
+                  advance();
+                  if matchToken("keyword.record") {
+                    let prec = createNode("stmt.record_decl");
+                    setAttr(prec, "type_name", typeName);
+                    setAttr(prec, "is_packed", "true");
+                    // Simplified: parse fields until end
+                    while not checkToken("keyword.end") {
+                      if checkToken("identifier") {
+                        let pf = createNode("stmt.field_decl");
+                        setAttr(pf, "field_names", currentText());
+                        advance();
+                        while matchToken("delimiter.comma") {
+                          setAttr(pf, "field_names", getAttr(pf, "field_names") + "," + currentText());
+                          advance();
+                        }
+                        requireToken("delimiter.colon");
+                        setAttr(pf, "field_type", currentText());
+                        advance();
+                        requireToken("delimiter.semicolon");
+                        addChild(prec, pf);
+                      } else {
+                        advance();
+                      }
+                    }
+                    requireToken("keyword.end");
+                    requireToken("delimiter.semicolon");
+                    addChild(nd, prec);
+                  } else {
+                    if matchToken("keyword.array") {
+                      let parr = createNode("stmt.array_decl");
+                      setAttr(parr, "type_name", typeName);
+                      setAttr(parr, "is_packed", "true");
+                      if matchToken("delimiter.lbracket") {
+                        setAttr(parr, "index_type", currentText());
+                        advance();
+                        if matchToken("op.dotdot") {
+                          setAttr(parr, "index_type", getAttr(parr, "index_type") + ".." + currentText());
+                          advance();
+                        }
+                        requireToken("delimiter.rbracket");
+                      }
+                      requireToken("keyword.of");
+                      setAttr(parr, "elem_type", currentText());
+                      advance();
+                      requireToken("delimiter.semicolon");
+                      addChild(nd, parr);
+                    }
+                  }
+                } else {
+                  if checkToken("delimiter.lparen") {
+                    // Enumeration: (Red, Green, Blue)
+                    advance();
+                    let en = createNode("stmt.enum_decl");
+                    setAttr(en, "type_name", typeName);
+                    let elem = createNode("stmt.enum_elem");
+                    setAttr(elem, "elem_name", currentText());
+                    advance();
+                    if matchToken("op.eq") {
+                      addChild(elem, parseExpr(0));
+                    }
+                    addChild(en, elem);
+                    while matchToken("delimiter.comma") {
+                      let elem2 = createNode("stmt.enum_elem");
+                      setAttr(elem2, "elem_name", currentText());
+                      advance();
+                      if matchToken("op.eq") {
+                        addChild(elem2, parseExpr(0));
+                      }
+                      addChild(en, elem2);
+                    }
+                    requireToken("delimiter.rparen");
+                    requireToken("delimiter.semicolon");
+                    addChild(nd, en);
+                  } else {
+                    if matchToken("keyword.set") {
+                      // Set type: set of BaseType
+                      requireToken("keyword.of");
+                      let setDecl = createNode("stmt.set_decl");
+                      setAttr(setDecl, "type_name", typeName);
+                      setAttr(setDecl, "base_type", currentText());
+                      advance();
+                      // May have subrange: set of 0..255
+                      if matchToken("op.dotdot") {
+                        setAttr(setDecl, "base_type", getAttr(setDecl, "base_type") + ".." + currentText());
+                        advance();
+                      }
+                      requireToken("delimiter.semicolon");
+                      addChild(nd, setDecl);
+                    } else {
+                      if matchToken("keyword.array") {
+                        // Array type
+                        let arr = createNode("stmt.array_decl");
+                        setAttr(arr, "type_name", typeName);
+                        if matchToken("delimiter.lbracket") {
+                          // Static array: array[Low..High] of T
+                          setAttr(arr, "is_static", "true");
+                          let idxType = currentText();
+                          advance();
+                          if matchToken("op.dotdot") {
+                            idxType = idxType + ".." + currentText();
+                            advance();
+                          }
+                          setAttr(arr, "index_type", idxType);
+                          // Multi-dimensional: array[I1, I2] of T
+                          while matchToken("delimiter.comma") {
+                            let idx2 = currentText();
+                            advance();
+                            if matchToken("op.dotdot") {
+                              idx2 = idx2 + ".." + currentText();
+                              advance();
+                            }
+                            setAttr(arr, "index_type", getAttr(arr, "index_type") + "," + idx2);
+                          }
+                          requireToken("delimiter.rbracket");
+                        } else {
+                          // Dynamic array: array of T
+                          setAttr(arr, "is_static", "false");
+                        }
+                        requireToken("keyword.of");
+                        setAttr(arr, "elem_type", currentText());
+                        advance();
+                        requireToken("delimiter.semicolon");
+                        addChild(nd, arr);
+                      } else {
+                        if matchToken("op.caret") {
+                          // Pointer type: ^BaseType
+                          let ptr = createNode("stmt.pointer_decl");
+                          setAttr(ptr, "type_name", typeName);
+                          setAttr(ptr, "base_type", currentText());
+                          advance();
+                          requireToken("delimiter.semicolon");
+                          addChild(nd, ptr);
+                        } else {
+                          if checkToken("keyword.procedure") or checkToken("keyword.function") {
+                            // Procedural type: procedure(X: Integer) of object
+                            let ptype = createNode("stmt.proc_type_decl");
+                            setAttr(ptype, "type_name", typeName);
+                            if matchToken("keyword.function") {
+                              setAttr(ptype, "proc_kind", "function");
+                            } else {
+                              expect keyword.procedure;
+                              setAttr(ptype, "proc_kind", "procedure");
+                            }
+                            if matchToken("delimiter.lparen") {
+                              while not checkToken("delimiter.rparen") {
+                                let pp = createNode("stmt.param");
+                                if matchToken("keyword.var") { setAttr(pp, "param.mode", "var"); }
+                                else { if matchToken("keyword.const") { setAttr(pp, "param.mode", "const"); }
+                                else { if matchToken("keyword.out") { setAttr(pp, "param.mode", "out"); }
+                                else { setAttr(pp, "param.mode", "value"); } } }
+                                setAttr(pp, "param.name", currentText());
+                                advance();
+                                if matchToken("delimiter.colon") { setAttr(pp, "param.type_text", currentText()); advance(); }
+                                addChild(ptype, pp);
+                                matchToken("delimiter.semicolon");
+                              }
+                              requireToken("delimiter.rparen");
+                            }
+                            if matchToken("delimiter.colon") {
+                              setAttr(ptype, "return_type", currentText());
+                              advance();
+                            }
+                            if matchToken("keyword.of") {
+                              if matchToken("keyword.object") {
+                                setAttr(ptype, "of_object", "true");
+                              }
+                            }
+                            // Calling convention
+                            if matchToken("keyword.cdecl") { setAttr(ptype, "calling_conv", "cdecl"); }
+                            if matchToken("keyword.stdcall") { setAttr(ptype, "calling_conv", "stdcall"); }
+                            if matchToken("keyword.safecall") { setAttr(ptype, "calling_conv", "safecall"); }
+                            if matchToken("keyword.register") { setAttr(ptype, "calling_conv", "register"); }
+                            if matchToken("keyword.winapi") { setAttr(ptype, "calling_conv", "winapi"); }
+                            requireToken("delimiter.semicolon");
+                            addChild(nd, ptype);
+                          } else {
+                            if matchToken("keyword.reference") {
+                              // Method reference: reference to procedure/function
+                              requireToken("keyword.to");
+                              let mref = createNode("stmt.method_ref_decl");
+                              setAttr(mref, "type_name", typeName);
+                              if matchToken("keyword.function") {
+                                setAttr(mref, "proc_kind", "function");
+                              } else {
+                                expect keyword.procedure;
+                                setAttr(mref, "proc_kind", "procedure");
+                              }
+                              if matchToken("delimiter.lparen") {
+                                while not checkToken("delimiter.rparen") {
+                                  let rp = createNode("stmt.param");
+                                  if matchToken("keyword.var") { setAttr(rp, "param.mode", "var"); }
+                                  else { if matchToken("keyword.const") { setAttr(rp, "param.mode", "const"); }
+                                  else { if matchToken("keyword.out") { setAttr(rp, "param.mode", "out"); }
+                                  else { setAttr(rp, "param.mode", "value"); } } }
+                                  setAttr(rp, "param.name", currentText());
+                                  advance();
+                                  if matchToken("delimiter.colon") { setAttr(rp, "param.type_text", currentText()); advance(); }
+                                  addChild(mref, rp);
+                                  matchToken("delimiter.semicolon");
+                                }
+                                requireToken("delimiter.rparen");
+                              }
+                              if matchToken("delimiter.colon") {
+                                setAttr(mref, "return_type", currentText());
+                                advance();
+                              }
+                              requireToken("delimiter.semicolon");
+                              addChild(nd, mref);
+                            } else {
+                              if matchToken("keyword.file") {
+                                // File type: file of T
+                                let ftype = createNode("stmt.file_type_decl");
+                                setAttr(ftype, "type_name", typeName);
+                                if matchToken("keyword.of") {
+                                  setAttr(ftype, "elem_type", currentText());
+                                  advance();
+                                }
+                                requireToken("delimiter.semicolon");
+                                addChild(nd, ftype);
+                              } else {
+                                if matchToken("keyword.type") {
+                                  // Distinct type: type TNewType = type TOldType
+                                  let dt = createNode("stmt.type_alias");
+                                  setAttr(dt, "type_name", typeName);
+                                  setAttr(dt, "is_distinct", "true");
+                                  setAttr(dt, "base_type", currentText());
+                                  advance();
+                                  requireToken("delimiter.semicolon");
+                                  addChild(nd, dt);
+                                } else {
+                                  // Type alias or subrange: TMyInt = Integer, TRange = 1..10
+                                  let alias = createNode("stmt.type_alias");
+                                  setAttr(alias, "type_name", typeName);
+                                  if hasGenerics {
+                                    setAttr(alias, "generic_params", genericParams);
+                                  }
+                                  let baseType = currentText();
+                                  advance();
+                                  // Check for subrange
+                                  if matchToken("op.dotdot") {
+                                    let sr = createNode("stmt.subrange_decl");
+                                    setAttr(sr, "type_name", typeName);
+                                    setAttr(sr, "low_bound", baseType);
+                                    setAttr(sr, "high_bound", currentText());
+                                    advance();
+                                    requireToken("delimiter.semicolon");
+                                    addChild(nd, sr);
+                                  } else {
+                                    // Check for generic instantiation: TList<Integer>
+                                    if matchToken("op.lt") {
+                                      let genArgs = currentText();
+                                      advance();
+                                      while matchToken("delimiter.comma") {
+                                        genArgs = genArgs + "," + currentText();
+                                        advance();
+                                      }
+                                      requireToken("op.gt");
+                                      setAttr(alias, "base_type", baseType);
+                                      setAttr(alias, "generic_args", genArgs);
+                                    } else {
+                                      setAttr(alias, "base_type", baseType);
+                                    }
+                                    // Optional portability
+                                    if matchToken("keyword.deprecated") { setAttr(alias, "deprecated", "true"); }
+                                    if matchToken("keyword.platform") { setAttr(alias, "platform", "true"); }
+                                    requireToken("delimiter.semicolon");
+                                    addChild(nd, alias);
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // var section: var Name1: Type; Name2: Type = Init;
+  rule stmt.var_decl {
+    expect keyword.var;
+    let nd = getResultNode();
+    let more = true;
+    while more {
+      if not checkToken("identifier") { more = false; }
+      if checkToken("keyword.var") { more = false; }
+      if checkToken("keyword.const") { more = false; }
+      if checkToken("keyword.type") { more = false; }
+      if checkToken("keyword.begin") { more = false; }
+      if checkToken("keyword.function") { more = false; }
+      if checkToken("keyword.procedure") { more = false; }
+      if checkToken("keyword.constructor") { more = false; }
+      if checkToken("keyword.destructor") { more = false; }
+      if checkToken("keyword.end") { more = false; }
+      if checkToken("keyword.implementation") { more = false; }
+      if checkToken("keyword.initialization") { more = false; }
+      if checkToken("keyword.finalization") { more = false; }
+      if checkToken("keyword.resourcestring") { more = false; }
+      if checkToken("keyword.threadvar") { more = false; }
+      if checkToken("keyword.label") { more = false; }
+      if checkToken("keyword.exports") { more = false; }
+      if checkToken("keyword.uses") { more = false; }
+      if checkToken("keyword.class") { more = false; }
+      if checkToken("keyword.if") { more = false; }
+      if checkToken("keyword.while") { more = false; }
+      if checkToken("keyword.for") { more = false; }
+      if checkToken("keyword.repeat") { more = false; }
+      if checkToken("keyword.try") { more = false; }
+      if checkToken("keyword.case") { more = false; }
+      if checkToken("keyword.with") { more = false; }
+
+      if more {
+        let v = createNode("stmt.single_var");
+        let vname = currentText();
+        advance();
+        // Multiple vars: X, Y: Integer;
+        let varNames = vname;
+        while matchToken("delimiter.comma") {
+          varNames = varNames + "," + currentText();
+          advance();
+        }
+        setAttr(v, "vname", varNames);
+        requireToken("delimiter.colon");
+        setAttr(v, "vtype", currentText());
+        advance();
+        // Optional initializer
+        if matchToken("op.eq") {
+          addChild(v, parseExpr(0));
+        }
+        if matchToken("op.assign") {
+          addChild(v, parseExpr(0));
+        }
+        // absolute clause
+        if matchToken("keyword.absolute") {
+          setAttr(v, "absolute", currentText());
+          advance();
+        }
+        requireToken("delimiter.semicolon");
+        addChild(nd, v);
+      }
+    }
+  }
+
+  // threadvar section
+  rule stmt.threadvar_decl {
+    expect keyword.threadvar;
+    let nd = getResultNode();
+    let more = true;
+    while more {
+      if not checkToken("identifier") { more = false; }
+      if checkToken("keyword.var") { more = false; }
+      if checkToken("keyword.const") { more = false; }
+      if checkToken("keyword.begin") { more = false; }
+      if checkToken("keyword.end") { more = false; }
+
+      if more {
+        let tv = createNode("stmt.single_var");
+        setAttr(tv, "vname", currentText());
+        advance();
+        requireToken("delimiter.colon");
+        setAttr(tv, "vtype", currentText());
+        advance();
+        setAttr(tv, "is_threadvar", "true");
+        requireToken("delimiter.semicolon");
+        addChild(nd, tv);
+      }
+    }
+  }
+
+  // label section: label Label1, Label2;
+  rule stmt.label_decl {
+    expect keyword.label;
+    let nd = getResultNode();
+    let l = createNode("stmt.label_item");
+    setAttr(l, "label_name", currentText());
+    advance();
+    addChild(nd, l);
+    while matchToken("delimiter.comma") {
+      let l2 = createNode("stmt.label_item");
+      setAttr(l2, "label_name", currentText());
+      advance();
+      addChild(nd, l2);
+    }
+    requireToken("delimiter.semicolon");
+  }
+
+  // resourcestring section
+  rule stmt.resourcestring_decl {
+    expect keyword.resourcestring;
+    let nd = getResultNode();
+    let more = true;
+    while more {
+      if not checkToken("identifier") { more = false; }
+      if checkToken("keyword.var") { more = false; }
+      if checkToken("keyword.const") { more = false; }
+      if checkToken("keyword.begin") { more = false; }
+      if checkToken("keyword.end") { more = false; }
+
+      if more {
+        let rs = createNode("stmt.resstring_item");
+        setAttr(rs, "rsname", currentText());
+        advance();
+        requireToken("op.eq");
+        addChild(rs, parseExpr(0));
+        requireToken("delimiter.semicolon");
+        addChild(nd, rs);
+      }
+    }
+  }
+
+  // =========================================================================
+  //  STATEMENT RULES — CONTROL FLOW
+  // =========================================================================
+
+  // if/then/else
+  rule stmt.if {
+    expect keyword.if;
+    parse expr -> @condition;
+    expect keyword.then;
+    parse many stmt until [keyword.else, keyword.end, delimiter.semicolon] -> @then_body;
+    optional {
+      expect keyword.else;
+      parse many stmt until [keyword.end, delimiter.semicolon] -> @else_body;
+    }
+  }
+
+  // case/of/else/end
+  rule stmt.case {
+    expect keyword.case;
+    parse expr -> @selector;
+    expect keyword.of;
+    let nd = getResultNode();
+    // Parse case selectors
+    while not checkToken("keyword.else") and not checkToken("keyword.end") {
+      let sel = createNode("stmt.case_selector");
+      // Parse case labels: value, value..value, value
+      let label = parseExpr(0);
+      if matchToken("op.dotdot") {
+        let range = createNode("expr.range");
+        addChild(range, label);
+        addChild(range, parseExpr(0));
+        addChild(sel, range);
+      } else {
+        addChild(sel, label);
+      }
+      while matchToken("delimiter.comma") {
+        let label2 = parseExpr(0);
+        if matchToken("op.dotdot") {
+          let range2 = createNode("expr.range");
+          addChild(range2, label2);
+          addChild(range2, parseExpr(0));
+          addChild(sel, range2);
+        } else {
+          addChild(sel, label2);
+        }
+      }
+      requireToken("delimiter.colon");
+      // Parse statement(s) for this case
+      let body = createNode("stmt.block");
+      addChild(body, parseStmt());
+      addChild(sel, body);
+      matchToken("delimiter.semicolon");
+      addChild(nd, sel);
+    }
+    // Optional else clause
+    if matchToken("keyword.else") {
+      let elseBlock = createNode("stmt.case_else");
+      while not checkToken("keyword.end") {
+        addChild(elseBlock, parseStmt());
+        matchToken("delimiter.semicolon");
+      }
+      addChild(nd, elseBlock);
+    }
+    expect keyword.end;
+  }
+
+  // for..to/downto..do
+  rule stmt.for {
+    expect keyword.for;
+    let nd = getResultNode();
+
+    // Check for inline var: for var I: Integer := ...
+    if matchToken("keyword.var") {
+      setAttr(nd, "has_inline_var", "true");
+      setAttr(nd, "var", currentText());
+      advance();
+      if matchToken("delimiter.colon") {
+        setAttr(nd, "var_type", currentText());
+        advance();
+      }
+    } else {
+      setAttr(nd, "var", currentText());
+      advance();
+    }
+
+    // Check for for-in loop: for X in Collection do
+    if matchToken("keyword.in") {
+      setAttr(nd, "loop_kind", "for_in");
+      parse expr -> @collection;
+      expect keyword.do;
+      parse many stmt until [keyword.end, delimiter.semicolon] -> @body;
+    } else {
+      // Traditional for loop: for X := Start to/downto Finish do
+      setAttr(nd, "loop_kind", "for_to");
+      expect op.assign;
+      parse expr -> @start;
+      consume [keyword.to, keyword.downto] -> @dir;
+      parse expr -> @finish;
+      expect keyword.do;
+      parse many stmt until [keyword.end, delimiter.semicolon] -> @body;
+    }
+  }
+
+  // while..do
+  rule stmt.while {
+    expect keyword.while;
+    parse expr -> @condition;
+    expect keyword.do;
+    parse many stmt until [keyword.end, delimiter.semicolon] -> @body;
+  }
+
+  // repeat..until
+  rule stmt.repeat {
+    expect keyword.repeat;
+    parse many stmt until keyword.until -> @body;
+    expect keyword.until;
+    parse expr -> @condition;
+    expect delimiter.semicolon;
+  }
+
+  // with..do
+  rule stmt.with {
+    expect keyword.with;
+    let nd = getResultNode();
+    addChild(nd, parseExpr(0));
+    while matchToken("delimiter.comma") {
+      addChild(nd, parseExpr(0));
+    }
+    expect keyword.do;
+    parse many stmt until [keyword.end, delimiter.semicolon] -> @body;
+  }
+
+  // goto label
+  rule stmt.goto {
+    expect keyword.goto;
+    consume [identifier, literal.integer] -> @label;
+    expect delimiter.semicolon;
+  }
+
+  // =========================================================================
+  //  STATEMENT RULES — EXCEPTION HANDLING
+  // =========================================================================
+
+  // try..except..end
+  rule stmt.try_except {
+    expect keyword.try;
+    parse many stmt until [keyword.except, keyword.finally] -> @try_body;
+    if matchToken("keyword.except") {
+      let nd = getResultNode();
+      setAttr(nd, "handler_kind", "except");
+      // Parse exception handlers
+      while not checkToken("keyword.end") and not checkToken("keyword.else") {
+        if matchToken("keyword.on") {
+          let handler = createNode("stmt.on_handler");
+          // on [E:] ExceptionType do Statement
+          let nameOrType = currentText();
+          advance();
+          if matchToken("delimiter.colon") {
+            setAttr(handler, "var_name", nameOrType);
+            setAttr(handler, "exception_type", currentText());
+            advance();
+          } else {
+            setAttr(handler, "exception_type", nameOrType);
+          }
+          requireToken("keyword.do");
+          addChild(handler, parseStmt());
+          matchToken("delimiter.semicolon");
+          addChild(nd, handler);
+        } else {
+          // General exception handler (no 'on' clause)
+          addChild(nd, parseStmt());
+          matchToken("delimiter.semicolon");
+        }
+      }
+      // Optional else in except block
+      if matchToken("keyword.else") {
+        let elseHandler = createNode("stmt.except_else");
+        while not checkToken("keyword.end") {
+          addChild(elseHandler, parseStmt());
+          matchToken("delimiter.semicolon");
+        }
+        addChild(nd, elseHandler);
+      }
+    } else {
+      // try..finally..end
+      expect keyword.finally;
+      let nd = getResultNode();
+      setAttr(nd, "handler_kind", "finally");
+      parse many stmt until keyword.end -> @finally_body;
+    }
+    expect keyword.end;
+  }
+
+  // raise [exception [at address]]
+  rule stmt.raise {
+    expect keyword.raise;
+    let nd = getResultNode();
+    if not checkToken("delimiter.semicolon") {
+      addChild(nd, parseExpr(0));
+      // Optional: at Address
+      if matchToken("keyword.at") {
+        addChild(nd, parseExpr(0));
+        setAttr(nd, "has_at", "true");
+      }
+    }
+    expect delimiter.semicolon;
+  }
+
+  // =========================================================================
+  //  STATEMENT RULES — ROUTINES
+  // =========================================================================
+
+  // function declaration
+  rule stmt.func_decl {
+    expect keyword.function;
+    let nd = getResultNode();
+
+    // Function name (may be qualified: TClass.Method)
+    let fname = currentText();
+    advance();
+    while matchToken("delimiter.dot") {
+      fname = fname + "." + currentText();
+      advance();
+    }
+    setAttr(nd, "func_name", fname);
+
+    // Optional generic params
+    if checkToken("op.lt") {
+      advance();
+      let gp = currentText();
+      advance();
+      while matchToken("delimiter.comma") {
+        gp = gp + "," + currentText();
+        advance();
+      }
+      requireToken("op.gt");
+      setAttr(nd, "generic_params", gp);
+    }
+
+    // Parameter list
+    if matchToken("delimiter.lparen") {
+      while not checkToken("delimiter.rparen") {
+        let p = createNode("stmt.param");
+        if matchToken("keyword.var") {
+          setAttr(p, "param.mode", "var");
+        } else {
+          if matchToken("keyword.const") {
+            if matchToken("delimiter.lbracket") {
+              requireToken("keyword.reference");
+              requireToken("delimiter.rbracket");
+              setAttr(p, "param.mode", "constref");
+            } else {
+              setAttr(p, "param.mode", "const");
+            }
+          } else {
+            if matchToken("keyword.out") {
+              setAttr(p, "param.mode", "out");
+            } else {
+              setAttr(p, "param.mode", "value");
+            }
+          }
+        }
+        // Parameter name(s): may be comma-separated
+        setAttr(p, "param.name", currentText());
+        advance();
+        // Type annotation
+        if matchToken("delimiter.colon") {
+          // Parse type (may be "array of T" or complex type)
+          if matchToken("keyword.array") {
+            requireToken("keyword.of");
+            if matchToken("keyword.const") {
+              setAttr(p, "param.type_text", "array of const");
+            } else {
+              setAttr(p, "param.type_text", "array of " + currentText());
+              advance();
+            }
+          } else {
+            setAttr(p, "param.type_text", currentText());
+            advance();
+          }
+        }
+        // Default value
+        if matchToken("op.eq") {
+          addChild(p, parseExpr(0));
+        }
+        addChild(nd, p);
+        matchToken("delimiter.semicolon");
+      }
+      requireToken("delimiter.rparen");
+    }
+
+    // Return type
+    expect delimiter.colon;
+    setAttr(nd, "return_type", currentText());
+    advance();
+    expect delimiter.semicolon;
+
+    // Directives (overload, inline, external, forward, calling conv, etc.)
+    let parseDirs2 = true;
+    while parseDirs2 {
+      if matchToken("keyword.overload") { setAttr(nd, "is_overload", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.inline") { setAttr(nd, "is_inline", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.cdecl") { setAttr(nd, "calling_conv", "cdecl"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.stdcall") { setAttr(nd, "calling_conv", "stdcall"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.safecall") { setAttr(nd, "calling_conv", "safecall"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.register") { setAttr(nd, "calling_conv", "register"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.winapi") { setAttr(nd, "calling_conv", "winapi"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.pascal_cc") { setAttr(nd, "calling_conv", "pascal"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.virtual") { setAttr(nd, "is_virtual", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.override") { setAttr(nd, "is_override", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.abstract") { setAttr(nd, "is_abstract", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.dynamic") { setAttr(nd, "is_dynamic", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.reintroduce") { setAttr(nd, "is_reintroduce", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.final") { setAttr(nd, "is_final", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.static") { setAttr(nd, "is_static", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.noreturn") { setAttr(nd, "is_noreturn", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.deprecated") { setAttr(nd, "deprecated", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.platform") { setAttr(nd, "platform", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.experimental") { setAttr(nd, "experimental", "true"); matchToken("delimiter.semicolon"); }
+      else {
+        if matchToken("keyword.forward") {
+          setAttr(nd, "is_forward", "true");
+          matchToken("delimiter.semicolon");
+          parseDirs2 = false;
+        } else {
+          if matchToken("keyword.external") {
+            setAttr(nd, "is_external", "true");
+            // external 'lib' name 'func'
+            // external 'lib' index N
+            // external object 'file'
+            // external framework 'name'
+            if matchToken("keyword.object") {
+              setAttr(nd, "external_kind", "object");
+              setAttr(nd, "external_lib", currentText());
+              advance();
+            } else {
+              if matchToken("keyword.framework") {
+                setAttr(nd, "external_kind", "framework");
+                setAttr(nd, "external_lib", currentText());
+                advance();
+              } else {
+                if not checkToken("keyword.name") and not checkToken("keyword.index") and not checkToken("delimiter.semicolon") {
+                  setAttr(nd, "external_lib", currentText());
+                  advance();
+                }
+              }
+            }
+            if matchToken("keyword.name") {
+              setAttr(nd, "external_name", currentText());
+              advance();
+            }
+            if matchToken("keyword.index") {
+              setAttr(nd, "external_index", currentText());
+              advance();
+            }
+            if matchToken("keyword.delayed") {
+              setAttr(nd, "external_delayed", "true");
+            }
+            matchToken("delimiter.semicolon");
+            parseDirs2 = false;
+          } else {
+            parseDirs2 = false;
+          }
+        }
+      } } } } } } } } } } } } } } } } } } }
+    }
+
+    // Body: local declarations + begin..end (if not forward/external)
+    if getAttr(nd, "is_forward") != "true" and getAttr(nd, "is_external") != "true" {
+      // Local declarations (var, const, type blocks before begin)
+      parse many stmt until keyword.begin -> @decls;
+      expect keyword.begin;
+      parse many stmt until keyword.end -> @func_body;
+      expect keyword.end;
+      matchToken("delimiter.semicolon");
+    }
+  }
+
+  // procedure declaration
+  rule stmt.proc_decl {
+    expect keyword.procedure;
+    let nd = getResultNode();
+
+    // Procedure name (may be qualified)
+    let pname = currentText();
+    advance();
+    while matchToken("delimiter.dot") {
+      pname = pname + "." + currentText();
+      advance();
+    }
+    setAttr(nd, "func_name", pname);
+
+    // Optional generic params
+    if checkToken("op.lt") {
+      advance();
+      let gp2 = currentText();
+      advance();
+      while matchToken("delimiter.comma") {
+        gp2 = gp2 + "," + currentText();
+        advance();
+      }
+      requireToken("op.gt");
+      setAttr(nd, "generic_params", gp2);
+    }
+
+    // Parameter list
+    if matchToken("delimiter.lparen") {
+      while not checkToken("delimiter.rparen") {
+        let p = createNode("stmt.param");
+        if matchToken("keyword.var") {
+          setAttr(p, "param.mode", "var");
+        } else {
+          if matchToken("keyword.const") {
+            if matchToken("delimiter.lbracket") {
+              requireToken("keyword.reference");
+              requireToken("delimiter.rbracket");
+              setAttr(p, "param.mode", "constref");
+            } else {
+              setAttr(p, "param.mode", "const");
+            }
+          } else {
+            if matchToken("keyword.out") {
+              setAttr(p, "param.mode", "out");
+            } else {
+              setAttr(p, "param.mode", "value");
+            }
+          }
+        }
+        setAttr(p, "param.name", currentText());
+        advance();
+        if matchToken("delimiter.colon") {
+          if matchToken("keyword.array") {
+            requireToken("keyword.of");
+            if matchToken("keyword.const") {
+              setAttr(p, "param.type_text", "array of const");
+            } else {
+              setAttr(p, "param.type_text", "array of " + currentText());
+              advance();
+            }
+          } else {
+            setAttr(p, "param.type_text", currentText());
+            advance();
+          }
+        }
+        if matchToken("op.eq") {
+          addChild(p, parseExpr(0));
+        }
+        addChild(nd, p);
+        matchToken("delimiter.semicolon");
+      }
+      requireToken("delimiter.rparen");
+    }
+    expect delimiter.semicolon;
+
+    // Directives (same as function)
+    let parseDirs3 = true;
+    while parseDirs3 {
+      if matchToken("keyword.overload") { setAttr(nd, "is_overload", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.inline") { setAttr(nd, "is_inline", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.cdecl") { setAttr(nd, "calling_conv", "cdecl"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.stdcall") { setAttr(nd, "calling_conv", "stdcall"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.safecall") { setAttr(nd, "calling_conv", "safecall"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.register") { setAttr(nd, "calling_conv", "register"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.winapi") { setAttr(nd, "calling_conv", "winapi"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.pascal_cc") { setAttr(nd, "calling_conv", "pascal"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.virtual") { setAttr(nd, "is_virtual", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.override") { setAttr(nd, "is_override", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.abstract") { setAttr(nd, "is_abstract", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.dynamic") { setAttr(nd, "is_dynamic", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.reintroduce") { setAttr(nd, "is_reintroduce", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.final") { setAttr(nd, "is_final", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.static") { setAttr(nd, "is_static", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.noreturn") { setAttr(nd, "is_noreturn", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.deprecated") { setAttr(nd, "deprecated", "true"); matchToken("delimiter.semicolon"); }
+      else { if matchToken("keyword.platform") { setAttr(nd, "platform", "true"); matchToken("delimiter.semicolon"); }
+      else {
+        if matchToken("keyword.forward") {
+          setAttr(nd, "is_forward", "true");
+          matchToken("delimiter.semicolon");
+          parseDirs3 = false;
+        } else {
+          if matchToken("keyword.external") {
+            setAttr(nd, "is_external", "true");
+            if matchToken("keyword.object") {
+              setAttr(nd, "external_kind", "object");
+              setAttr(nd, "external_lib", currentText());
+              advance();
+            } else {
+              if matchToken("keyword.framework") {
+                setAttr(nd, "external_kind", "framework");
+                setAttr(nd, "external_lib", currentText());
+                advance();
+              } else {
+                if not checkToken("keyword.name") and not checkToken("keyword.index") and not checkToken("delimiter.semicolon") {
+                  setAttr(nd, "external_lib", currentText());
+                  advance();
+                }
+              }
+            }
+            if matchToken("keyword.name") { setAttr(nd, "external_name", currentText()); advance(); }
+            if matchToken("keyword.index") { setAttr(nd, "external_index", currentText()); advance(); }
+            if matchToken("keyword.delayed") { setAttr(nd, "external_delayed", "true"); }
+            matchToken("delimiter.semicolon");
+            parseDirs3 = false;
+          } else {
+            parseDirs3 = false;
+          }
+        }
+      } } } } } } } } } } } } } } } } } } }
+    }
+
+    // Body
+    if getAttr(nd, "is_forward") != "true" and getAttr(nd, "is_external") != "true" {
+      parse many stmt until keyword.begin -> @decls;
+      expect keyword.begin;
+      parse many stmt until keyword.end -> @func_body;
+      expect keyword.end;
+      matchToken("delimiter.semicolon");
+    }
+  }
+
+  // constructor declaration
+  rule stmt.constructor_decl {
+    expect keyword.constructor;
+    let nd = getResultNode();
+    let cname = currentText();
+    advance();
+    while matchToken("delimiter.dot") {
+      cname = cname + "." + currentText();
+      advance();
+    }
+    setAttr(nd, "func_name", cname);
+
+    if matchToken("delimiter.lparen") {
+      while not checkToken("delimiter.rparen") {
+        let p = createNode("stmt.param");
+        if matchToken("keyword.var") { setAttr(p, "param.mode", "var"); }
+        else { if matchToken("keyword.const") { setAttr(p, "param.mode", "const"); }
+        else { if matchToken("keyword.out") { setAttr(p, "param.mode", "out"); }
+        else { setAttr(p, "param.mode", "value"); } } }
+        setAttr(p, "param.name", currentText());
+        advance();
+        if matchToken("delimiter.colon") { setAttr(p, "param.type_text", currentText()); advance(); }
+        if matchToken("op.eq") { addChild(p, parseExpr(0)); }
+        addChild(nd, p);
+        matchToken("delimiter.semicolon");
+      }
+      requireToken("delimiter.rparen");
+    }
+    expect delimiter.semicolon;
+
+    // Directives
+    if matchToken("keyword.overload") { setAttr(nd, "is_overload", "true"); matchToken("delimiter.semicolon"); }
+    if matchToken("keyword.virtual") { setAttr(nd, "is_virtual", "true"); matchToken("delimiter.semicolon"); }
+    if matchToken("keyword.override") { setAttr(nd, "is_override", "true"); matchToken("delimiter.semicolon"); }
+
+    // Body
+    parse many stmt until keyword.begin -> @decls;
+    expect keyword.begin;
+    parse many stmt until keyword.end -> @func_body;
+    expect keyword.end;
+    matchToken("delimiter.semicolon");
+  }
+
+  // destructor declaration
+  rule stmt.destructor_decl {
+    expect keyword.destructor;
+    let nd = getResultNode();
+    let dname = currentText();
+    advance();
+    while matchToken("delimiter.dot") {
+      dname = dname + "." + currentText();
+      advance();
+    }
+    setAttr(nd, "func_name", dname);
+
+    if matchToken("delimiter.lparen") {
+      // destructors typically have no params but we handle it
+      while not checkToken("delimiter.rparen") {
+        advance();
+      }
+      requireToken("delimiter.rparen");
+    }
+    expect delimiter.semicolon;
+
+    // Directives
+    if matchToken("keyword.override") { setAttr(nd, "is_override", "true"); matchToken("delimiter.semicolon"); }
+    if matchToken("keyword.virtual") { setAttr(nd, "is_virtual", "true"); matchToken("delimiter.semicolon"); }
+
+    // Body
+    parse many stmt until keyword.begin -> @decls;
+    expect keyword.begin;
+    parse many stmt until keyword.end -> @func_body;
+    expect keyword.end;
+    matchToken("delimiter.semicolon");
+  }
+
+  // =========================================================================
+  //  STATEMENT RULES — ASSIGNMENTS AND CALLS
+  // =========================================================================
+
+  // General identifier statement: assignment or expression statement
+  rule stmt.ident_stmt {
+    let lhs = parseExpr(0);
+    let nd = getResultNode();
+    if matchToken("op.assign") {
+      let rhs = parseExpr(0);
+      setAttr(nd, "is_assign", "true");
+      addChild(nd, lhs);
+      addChild(nd, rhs);
+    } else {
+      setAttr(nd, "is_assign", "false");
+      addChild(nd, lhs);
+    }
+    requireToken("delimiter.semicolon");
+  }
+
+  // Inline var declaration (statement-level): var X: Type := Expr;
+  rule stmt.inline_var {
+    expect keyword.var;
+    let nd = getResultNode();
+    setAttr(nd, "vname", currentText());
+    advance();
+    if matchToken("delimiter.colon") {
+      setAttr(nd, "vtype", currentText());
+      advance();
+    }
+    if matchToken("op.assign") {
+      addChild(nd, parseExpr(0));
+    }
+    requireToken("delimiter.semicolon");
+  }
+
+  // Inline const declaration (statement-level): const X = Expr;
+  rule stmt.inline_const {
+    expect keyword.const;
+    let nd = getResultNode();
+    // Only if followed by ident = (not a const section)
+    setAttr(nd, "cname", currentText());
+    advance();
+    if matchToken("delimiter.colon") {
+      setAttr(nd, "ctype", currentText());
+      advance();
+    }
+    requireToken("op.eq");
+    addChild(nd, parseExpr(0));
+    requireToken("delimiter.semicolon");
+  }
+
+  // WriteLn(args) — special handling for C++ output
+  rule stmt.writeln {
+    expect keyword.writeln;
+    let nd = getResultNode();
+    if matchToken("delimiter.lparen") {
+      if not checkToken("delimiter.rparen") {
+        setAttr(nd, "raw_args", collectUntil("delimiter.rparen"));
+      }
+      expect delimiter.rparen;
+    }
+    expect delimiter.semicolon;
+  }
+
+  // Write(args)
+  rule stmt.write_stmt {
+    expect keyword.write_proc;
+    let nd = getResultNode();
+    if matchToken("delimiter.lparen") {
+      if not checkToken("delimiter.rparen") {
+        setAttr(nd, "raw_args", collectUntil("delimiter.rparen"));
+      }
+      expect delimiter.rparen;
+    }
+    expect delimiter.semicolon;
+  }
+
+  // =========================================================================
+  //  STATEMENT RULES — EXPORTS
+  // =========================================================================
+
+  // exports clause: exports Func1 name 'alias', Func2 index 1;
+  rule stmt.exports {
+    expect keyword.exports;
+    let nd = getResultNode();
+    let e = createNode("stmt.export_item");
+    setAttr(e, "export_name", currentText());
+    advance();
+    if matchToken("keyword.name") {
+      setAttr(e, "alias_name", currentText());
+      advance();
+    }
+    if matchToken("keyword.index") {
+      setAttr(e, "export_index", currentText());
+      advance();
+    }
+    addChild(nd, e);
+    while matchToken("delimiter.comma") {
+      let e2 = createNode("stmt.export_item");
+      setAttr(e2, "export_name", currentText());
+      advance();
+      if matchToken("keyword.name") { setAttr(e2, "alias_name", currentText()); advance(); }
+      if matchToken("keyword.index") { setAttr(e2, "export_index", currentText()); advance(); }
+      addChild(nd, e2);
+    }
+    requireToken("delimiter.semicolon");
+  }
+
+  // =========================================================================
+  //  STATEMENT RULES — ASSEMBLY
+  // =========================================================================
+
+  // asm..end block (raw passthrough)
+  rule stmt.asm {
+    expect keyword.asm;
+    let nd = getResultNode();
+    let asmText = "";
+    while not checkToken("keyword.end") {
+      asmText = asmText + " " + currentText();
+      advance();
+    }
+    setAttr(nd, "asm_text", asmText);
+    expect keyword.end;
+  }
+
+  // =========================================================================
+  //  DIRECTIVE HANDLERS
+  // =========================================================================
+
+  rule stmt.directive_apptype {
+    expect directive.apptype;
+    consume identifier -> @value;
+  }
+}
