@@ -224,7 +224,17 @@ semantics {
     }
 
     on stmt.label_item {
-      declare @label_name as constant;
+      // Labels are jump targets, not values. The metamorf DSL does not have
+      // a dedicated 'label' symbol kind, so we register labels using the
+      // 'constant' kind to prevent duplicate-name errors and to allow
+      // goto-target lookup.  The label name is prefixed with "@label:" in
+      // the symbol table to prevent any accidental collision with a real
+      // constant or variable of the same source-level name.
+      // Semantic validation that a goto target is a label (not a constant)
+      // must be performed by inspecting the stored node kind, not the
+      // symbol-table kind.
+      let labelKey = "@label:" + getAttr(node, "label_name");
+      declare labelKey as constant;
     }
 
     // --- Resource strings ---
