@@ -3381,6 +3381,12 @@ var Y := Max(3, 5);           // inferred: T = Integer
 
 Type inference is not supported for generic type instantiations (only for method calls).
 
+Limitations of type inference:
+- **Inference fails for return-type-only parameters**: If the type parameter `T` appears only in the return type (not in any parameter), the compiler cannot infer it. The call must be explicit: `var V := Factory<TFoo>.Create`.
+- **Inference fails with multiple ambiguous overloads**: When two or more overloaded generic methods both match the inferred type, a compile-time ambiguity error is issued. Provide an explicit type argument to resolve it.
+- **No inference for generic types**: `TStack` (without `<T>`) is not a valid type expression. Inference applies only to generic **method** calls, never to generic **type** instantiations.
+- **Inference is not transitive**: The compiler performs inference from the argument types at the call site only — it does not propagate inferred types through a chain of intermediate calls.
+
 ### 11.5 Generic Instantiation
 
 A generic type is instantiated by providing type arguments:
