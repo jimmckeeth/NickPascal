@@ -4222,7 +4222,7 @@ Directives fall into three categories:
 | `{$Z1}` / `{$MINENUMSIZE 1}` | 1 | Minimum enum size |
 | `{$POINTERMATH OFF}` | OFF | When ON: enables pointer arithmetic (`P + N`, `P[N]`); when OFF (default): pointer arithmetic is not permitted |
 | `{$SCOPEDENUMS OFF}` | OFF | Scoped enumerations |
-| `{$ZEROBASEDSTRINGS OFF}` | OFF | 0-based string indexing |
+| `{$ZEROBASEDSTRINGS OFF}` | OFF | 0-based string indexing. **Deprecated in practice:** Embarcadero recommends against using `{$ZEROBASEDSTRINGS ON}` because the RTL string functions (`Pos`, `Copy`, `Delete`, `Insert`, etc.) remain unconditionally 1-based. Mixing 0-based indexing with 1-based RTL calls creates subtle off-by-one bugs. This directive was introduced for mobile-compiler compatibility but the mobile compilers have since been retired. New code should use the default 1-based indexing. |
 | `{$METHODINFO OFF}` | OFF | Generate method RTTI |
 
 ### 17.3 Parameter Directives
