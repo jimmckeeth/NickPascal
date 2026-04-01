@@ -2392,8 +2392,10 @@ type
 | `automated`       | Legacy (COM Automation); like `public` with Automation RTTI    |
 
 **Default visibility:** If no visibility specifier precedes the first members, they are:
-- `published` if the class has `{$M+}` or descends from `TPersistent` (which has `{$M+}`)
+- `published` if the class has `{$M+}` **or descends from a class compiled with `{$M+}`** (most notably `TPersistent` and all its descendants, including `TComponent`, `TControl`, VCL/FMX components, etc.)
 - `public` otherwise
+
+Note: The `{$M+}` state propagates automatically through the inheritance chain. If an ancestor class was compiled with `{$M+}`, all descendant classes inherit this setting regardless of the `{$M}` switch state in the descendant's compilation unit. Adding `{$M+}` to an ancestor affects the default visibility of all subsequently defined descendants.
 
 ### 8.4 Fields
 
