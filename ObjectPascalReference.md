@@ -5067,6 +5067,31 @@ PortabilityDir    = 'platform' | 'deprecated' [ StringLiteral ]
 Visibility        = 'public' | 'private' | 'protected' | 'published'
                   | 'strict' 'private' | 'strict' 'protected'
                   | 'automated' ;
+
+ClassVarSection   = 'class' 'var' { IdentList ':' Type ';' } ;
+OperatorDecl      = 'class' 'operator' OverloadableOp '(' FormalParams ')' ':' Type ';'
+                    [ MethodBody ';' ] ;
+ClassConstructorDecl = 'class' 'constructor' Ident ';' [ MethodBody ';' ] ;
+ClassDestructorDecl  = 'class' 'destructor' Ident ';' [ MethodBody ';' ] ;
+```
+
+### C.11 Terminal Symbols
+
+The following terminal symbols are used throughout the grammar but are defined lexically rather than syntactically:
+
+```ebnf
+(* Lexical terminals — see Chapter 2 for full lexical rules *)
+Ident             = LETTER { LETTER | DIGIT | '_' } ;  (* case-insensitive *)
+Number            = IntegerLiteral | RealLiteral ;
+IntegerLiteral    = DIGIT_SEQ | '$' HEX_DIGIT_SEQ | '%' BIN_DIGIT_SEQ ;
+RealLiteral       = DIGIT_SEQ '.' DIGIT_SEQ [ ('E'|'e') ['+'|'-'] DIGIT_SEQ ] ;
+StringLiteral     = STRING_PART { STRING_PART } ;
+StringConst       = StringLiteral ;  (* alias used in some productions *)
+BoolConst         = 'True' | 'False' ;
+GUID              = '{' HEX_DIGIT_SEQ '-' HEX_DIGIT_SEQ '-' HEX_DIGIT_SEQ '-'
+                    HEX_DIGIT_SEQ '-' HEX_DIGIT_SEQ '}' ;
+                    (* e.g. '{00000000-0000-0000-C000-000000000046}' *)
+AsmInstruction    = (* platform-specific assembly; see Chapter 16 *) ;
 ```
 
 ---
