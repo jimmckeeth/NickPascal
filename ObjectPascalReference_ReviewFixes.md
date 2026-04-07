@@ -297,3 +297,9 @@ The existing note was minimal. Expanded to clearly confirm that `TArray<T>` is f
 ### 49. [`99df34a`](https://github.com/omonien/nickpascal/commit/99df34a) — Expand `Supports()` documentation with all overloads and examples in §9.9
 
 Only two of four overloads were shown, and no usage examples were provided. Added the two-argument overloads (test-only, no `out` param) and the common query-and-use pattern.
+
+---
+
+### 50. [`<pending>`](https://github.com/omonien/nickpascal/commit/<pending>) — Reconcile lexical terminology and Appendix C terminals with current Delphi documentation in Chapter 1 / Appendix A / Appendix C
+
+The lexical chapter still used ASCII-only identifier grammar, `CHAR_LITERAL` terminology for `#nn`/`#$nn` string fragments, and appendix-terminal definitions that had drifted from the revised Chapter 1 wording. The wording was reconciled to use Unicode-aware identifier rules, `CONTROL_STRING` terminology, clearer classification of context-restricted reserved words and class-scope directive words, and Appendix C terminal aliases that now point back to the lexical productions actually used by the document.
