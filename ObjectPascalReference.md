@@ -212,7 +212,7 @@ BIN_DIGIT        = '0' | '1' ;
 
 The type of an integer literal is the smallest of the following types that can represent the value: `Integer` (32-bit signed), `Cardinal` (32-bit unsigned), `Int64` (64-bit signed), `UInt64` (64-bit unsigned). If the value exceeds `UInt64` range, a compile-time error shall be issued.
 
-Underscores may be used as digit separators within numeric literals (Delphi 11+): `1_000_000`, `$FF_FF`, `%1111_0000`. Underscores shall not appear at the beginning or end of the digit sequence, and consecutive underscores are not permitted.
+Underscores may be used as digit separators within numeric literals (Delphi 11+): `1_000_000`, `$FF_FF`, `%1111_0000`, `&7_7`. Underscores shall not appear at the beginning or end of the digit sequence, and consecutive underscores are not permitted.
 
 #### 1.7.2 Floating-Point Literals
 
@@ -229,11 +229,15 @@ Floating-point literals are of type `Extended` (80-bit on Win32, 64-bit/`Double`
 
 ```
 STRING_LITERAL   = STRING_PART { STRING_PART } ;
-STRING_PART      = QUOTED_STRING | CONTROL_STRING ;
+STRING_PART      = QUOTED_STRING | CONTROL_STRING | CARET_CONTROL_STRING ;
 
 QUOTED_STRING    = "'" { STRING_CHAR | "''" } "'" ;
 STRING_CHAR      = (* any character except "'" and line terminators *) ;
 CONTROL_STRING   = '#' ( DECIMAL_LITERAL | HEX_LITERAL ) ;
+CARET_CONTROL_STRING = '^' CARET_CONTROL_CHAR ;
+CARET_CONTROL_CHAR   = (* implementation-defined control-character designator;
+                          compiler-verified examples in Delphi 13.1 include
+                          `^A`, `^M`, `^@`, `^[`, `^\\`, `^]`, `^^`, `^_`, `^?` *) ;
 ```
 
 Rules:
@@ -241,10 +245,11 @@ Rules:
 1. A single-quoted string `'Hello'` represents a string of characters.
 2. Within a quoted string, two consecutive apostrophes `''` represent a single apostrophe character -- they are an escape sequence, **not** two empty strings being concatenated.
 3. A `#` prefix followed by a decimal or hex integer introduces a control-string fragment that specifies a character by its ordinal value. `#65` is the character `A`. `#$41` is also `A`.
-4. Quoted strings and control-string fragments may be combined without `+` to form a single character string: `'Hello'#13#10'World'` yields a string containing `Hello`, a CR/LF, and `World`. However, two quoted strings cannot be concatenated in this way; use the `+` operator for explicit string concatenation: `'Hello' + 'World'`.
-5. A string literal of length 1 is compatible with any character type and with string types.
-6. A string literal of length 0 (`''`) represents the empty string.
-7. String literals are **not** null-terminated in their Pascal representation, but the runtime ensures a null terminator is present for interoperability with C APIs.
+4. Delphi 13.1 Florence also accepts legacy caret-control fragments such as `^A`, `^M`, `^@`, `^?`, and related forms. Compiler validation confirms that these contribute a single control character to the resulting string. Because the current Embarcadero lexical documentation does not specify the full accepted `^` mapping table, the exact mapping beyond compiler-verified examples is treated here as implementation-defined.
+5. Quoted strings, `#` control-string fragments, and caret-control fragments may be combined without `+` to form a single character string: `'Hello'#13#10'World'`, `'A'^M^J'B'`, and `'A'^A` are all single string literals. However, two quoted strings cannot be concatenated in this way; use the `+` operator for explicit string concatenation: `'Hello' + 'World'`.
+6. A string literal of length 1 is compatible with any character type and with string types.
+7. A string literal of length 0 (`''`) represents the empty string.
+8. String literals are **not** null-terminated in their Pascal representation, but the runtime ensures a null terminator is present for interoperability with C APIs.
 
 #### 1.8.1 Multi-Line String Literals
 
@@ -5184,7 +5189,7 @@ Ident             = IDENTIFIER ;
 Number            = IntegerLiteral | RealLiteral ;
 IntegerLiteral    = DECIMAL_LITERAL | HEX_LITERAL | OCTAL_LITERAL | BINARY_LITERAL ;
 RealLiteral       = FLOAT_LITERAL ;
-StringPart        = QUOTED_STRING | CONTROL_STRING ;
+StringPart        = QUOTED_STRING | CONTROL_STRING | CARET_CONTROL_STRING ;
 StringLiteral     = StringPart { StringPart } ;
 StringConst       = StringLiteral ;  (* alias used in some productions *)
 BoolConst         = 'True' | 'False' ;

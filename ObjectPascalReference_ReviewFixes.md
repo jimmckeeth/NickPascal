@@ -309,3 +309,9 @@ The lexical chapter still used ASCII-only identifier grammar, `CHAR_LITERAL` ter
 ### 51. [`<pending>`](https://github.com/omonien/nickpascal/commit/<pending>) — Define chapter-level identifier aliases and align `UNIT_NAME` grammar after lexical rewrite
 
 After the Chapter 1 lexical rewrite, later grammar snippets still used the shorthand nonterminals `IDENT` and `IDENT_LIST` without defining them in the main text, and §2.3 still repeated `UNIT_NAME` using the older identifier form. Added explicit chapter-level aliases in §1.4.1 and aligned the repeated `UNIT_NAME` production so the main grammar remains internally consistent without relying on Appendix C as hidden glue.
+
+---
+
+### 52. [`<pending>`](https://github.com/omonien/nickpascal/commit/<pending>) — Verify compiler-accepted lexical edge cases for `&`, numeric separators, and caret control strings
+
+Targeted Delphi 13.1 Florence compiler experiments confirmed that `&begin` and `&77` are disambiguated as escaped identifier vs octal literal, underscore separators are accepted in decimal/hex/binary/octal numerals, and legacy caret control-string fragments such as `^A`, `^M`, and `^?` compile and contribute single control characters inside string literals. The reference and evidence artifacts were updated to reflect these compiler-verified facts, while keeping the undocumented full caret-mapping table labeled as implementation-defined.
