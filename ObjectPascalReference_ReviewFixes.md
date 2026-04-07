@@ -300,18 +300,18 @@ Only two of four overloads were shown, and no usage examples were provided. Adde
 
 ---
 
-### 50. [`<pending>`](https://github.com/omonien/nickpascal/commit/<pending>) — Reconcile lexical terminology and Appendix C terminals with current Delphi documentation in Chapter 1 / Appendix A / Appendix C
+### 50. [`02b5c77`](https://github.com/omonien/nickpascal/commit/02b5c77) — Reconcile lexical terminology and Appendix C terminals with current Delphi documentation in Chapter 1 / Appendix A / Appendix C
 
 The lexical chapter still used ASCII-only identifier grammar, `CHAR_LITERAL` terminology for `#nn`/`#$nn` string fragments, and appendix-terminal definitions that had drifted from the revised Chapter 1 wording. The wording was reconciled to use Unicode-aware identifier rules, `CONTROL_STRING` terminology, clearer classification of context-restricted reserved words and class-scope directive words, and Appendix C terminal aliases that now point back to the lexical productions actually used by the document.
 
 ---
 
-### 51. [`<pending>`](https://github.com/omonien/nickpascal/commit/<pending>) — Define chapter-level identifier aliases and align `UNIT_NAME` grammar after lexical rewrite
+### 51. [`56311b7`](https://github.com/omonien/nickpascal/commit/56311b7) — Define chapter-level identifier aliases and align `UNIT_NAME` grammar after lexical rewrite
 
 After the Chapter 1 lexical rewrite, later grammar snippets still used the shorthand nonterminals `IDENT` and `IDENT_LIST` without defining them in the main text, and §2.3 still repeated `UNIT_NAME` using the older identifier form. Added explicit chapter-level aliases in §1.4.1 and aligned the repeated `UNIT_NAME` production so the main grammar remains internally consistent without relying on Appendix C as hidden glue.
 
 ---
 
-### 52. [`<pending>`](https://github.com/omonien/nickpascal/commit/<pending>) — Verify compiler-accepted lexical edge cases for `&`, numeric separators, and caret control strings
+### 52. [`6863e0e`](https://github.com/omonien/nickpascal/commit/6863e0e) — Verify compiler-accepted lexical edge cases for `&`, numeric separators, and caret control strings
 
 Targeted Delphi 13.1 Florence compiler experiments confirmed that `&begin` and `&77` are disambiguated as escaped identifier vs octal literal, underscore separators are accepted in decimal/hex/binary/octal numerals, and legacy caret control-string fragments such as `^A`, `^M`, and `^?` compile and contribute single control characters inside string literals. The reference and evidence artifacts were updated to reflect these compiler-verified facts, while keeping the undocumented full caret-mapping table labeled as implementation-defined.
