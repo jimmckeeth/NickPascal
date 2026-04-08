@@ -113,25 +113,27 @@ White space (spaces U+0020, horizontal tabs U+0009, and line terminators) serves
 ### 1.4 Identifiers
 
 ```
-IDENTIFIER = LETTER { LETTER | DIGIT } ;
-LETTER     = 'A'..'Z' | 'a'..'z' | '_' ;
-DIGIT      = '0'..'9' ;
+IDENTIFIER     = IDENT_START { IDENT_CONTINUE } ;
+IDENT_START    = '_' | UNICODE_LETTER ;
+IDENT_CONTINUE = IDENT_START | UNICODE_DIGIT ;
 ```
 
 Rules:
 
 1. Identifiers are **case-insensitive**. `MyVar`, `myvar`, and `MYVAR` all refer to the same entity.
-2. Identifiers may begin with a letter or underscore, followed by zero or more letters, digits, or underscores.
+2. Identifiers may begin with an underscore or a Unicode alphabetic character. Subsequent characters may also include Unicode decimal digits.
 3. The **significant length** of an identifier is 255 characters. Characters beyond position 255 are ignored for purposes of identity comparison.
 4. An identifier that matches a **reserved word** ([§1.5](#15-reserved-words)) cannot be used as a user-defined identifier unless prefixed with `&` (the escaped identifier prefix). The `&` is not part of the identifier name; `&begin` refers to an identifier named `begin`.
 5. Identifiers matching **directive words** ([§1.6](#16-directive-words)) may be used as user-defined identifiers, but this is discouraged.
-6. **Lexer disambiguation for `&`**: When the lexer encounters `&`, it inspects the immediately following character. If the next character is a letter or `_`, the `&` is an escaped identifier prefix and the rest is scanned as an identifier (rule 4 above). If the next character is an octal digit (`0`–`7`), the `&` begins an `OCTAL_LITERAL` ([§1.7.1](#171-integer-literals)). No other character may follow `&`.
+6. **Lexer disambiguation for `&`**: When the lexer encounters `&`, it inspects the immediately following character. If the next character is an identifier-start character (underscore or Unicode alphabetic character), the `&` is an escaped identifier prefix and the rest is scanned as an identifier (rule 4 above). If the next character is an octal digit (`0`–`7`), the `&` begins an `OCTAL_LITERAL` ([§1.7.1](#171-integer-literals)). No other character may follow `&`.
 
 #### 1.4.1 Qualified Identifiers
 
 ```
-QUALIFIED_IDENT = [ UNIT_NAME '.' ] IDENT ;
-UNIT_NAME       = IDENT { '.' IDENT } ;
+IDENT           = IDENTIFIER ;
+IDENT_LIST      = IDENT { ',' IDENT } ;
+QUALIFIED_IDENT = [ UNIT_NAME '.' ] IDENTIFIER ;
+UNIT_NAME       = IDENTIFIER { '.' IDENTIFIER } ;
 ```
 
 A qualified identifier uses dot notation to resolve ambiguity. `System.SysUtils.StrToInt` refers to the identifier `StrToInt` declared in unit `System.SysUtils`.
@@ -162,7 +164,7 @@ with         xor
 
 Notes:
 - `operator` and `out` are directive/contextual keywords ([§1.6](#16-directive-words)) — they have special meaning only in operator overloading declarations and parameter modifiers respectively, and may be used as identifiers elsewhere.
-- `on` and `at` are context-sensitive reserved words: `on` has special meaning only inside `except` handler syntax; `at` only in `raise` statements. They cannot be used as identifiers without the `&` prefix.
+- `on` and `at` are context-restricted reserved words: `on` has special meaning only inside `except` handler syntax; `at` only in `raise` statements. They cannot be used as identifiers without the `&` prefix.
 
 ### 1.6 Directive Words
 
@@ -187,7 +189,7 @@ writeonly
 ```
 
 Notes:
-- Visibility specifiers (`private`, `protected`, `public`, `published`) are directives, not reserved words -- they can be used as identifiers outside class/record declarations, though this is strongly discouraged.
+- Visibility specifiers (`private`, `protected`, `public`, `published`) and `automated` behave as directives in general source text, but act like reserved words inside class-type declarations. Outside those contexts they may still be used as identifiers, though this is strongly discouraged.
 - `operator` and `out` appear here (not in [§1.5](#15-reserved-words)) because they are context-sensitive directives: `operator` is only meaningful in `class operator` declarations; `out` only as a parameter modifier.
 - `message` is a directive used to declare Windows message-handler methods ([§8.8.7](#887-message-handler-methods)).
 - `read` and `write` are property specifier directives ([§8.10](#810-properties)).
@@ -210,7 +212,7 @@ BIN_DIGIT        = '0' | '1' ;
 
 The type of an integer literal is the smallest of the following types that can represent the value: `Integer` (32-bit signed), `Cardinal` (32-bit unsigned), `Int64` (64-bit signed), `UInt64` (64-bit unsigned). If the value exceeds `UInt64` range, a compile-time error shall be issued.
 
-Underscores may be used as digit separators within numeric literals (Delphi 11+): `1_000_000`, `$FF_FF`, `%1111_0000`. Underscores shall not appear at the beginning or end of the digit sequence, and consecutive underscores are not permitted.
+Underscores may be used as digit separators within numeric literals (Delphi 11+): `1_000_000`, `$FF_FF`, `%1111_0000`, `&7_7`. Underscores shall not appear at the beginning or end of the digit sequence, and consecutive underscores are not permitted.
 
 #### 1.7.2 Floating-Point Literals
 
@@ -227,22 +229,27 @@ Floating-point literals are of type `Extended` (80-bit on Win32, 64-bit/`Double`
 
 ```
 STRING_LITERAL   = STRING_PART { STRING_PART } ;
-STRING_PART      = QUOTED_STRING | CHAR_LITERAL ;
+STRING_PART      = QUOTED_STRING | CONTROL_STRING | CARET_CONTROL_STRING ;
 
 QUOTED_STRING    = "'" { STRING_CHAR | "''" } "'" ;
 STRING_CHAR      = (* any character except "'" and line terminators *) ;
-CHAR_LITERAL     = '#' ( DECIMAL_LITERAL | HEX_LITERAL ) ;
+CONTROL_STRING   = '#' ( DECIMAL_LITERAL | HEX_LITERAL ) ;
+CARET_CONTROL_STRING = '^' CARET_CONTROL_CHAR ;
+CARET_CONTROL_CHAR   = (* implementation-defined control-character designator;
+                          compiler-verified examples in Delphi 13.1 include
+                          `^A`, `^M`, `^@`, `^[`, `^\\`, `^]`, `^^`, `^_`, `^?` *) ;
 ```
 
 Rules:
 
 1. A single-quoted string `'Hello'` represents a string of characters.
 2. Within a quoted string, two consecutive apostrophes `''` represent a single apostrophe character -- they are an escape sequence, **not** two empty strings being concatenated.
-3. A `#` prefix followed by a decimal or hex integer specifies a character by its ordinal value. `#65` is the character `A`. `#$41` is also `A`.
-4. A char literal may appear adjacent to a quoted string to form a single string constant: `'Hello'#13#10'World'` yields a string containing `Hello`, a CR/LF, and `World`. Two adjacent quoted strings separated by whitespace (`'Hello' 'World'`) are **not** concatenated -- use the `+` operator for explicit string concatenation: `'Hello' + 'World'`.
-5. A string literal of length 1 is compatible with both `Char` and `string` types.
-6. A string literal of length 0 (`''`) represents the empty string.
-7. String literals are **not** null-terminated in their Pascal representation, but the runtime ensures a null terminator is present for interoperability with C APIs.
+3. A `#` prefix followed by a decimal or hex integer introduces a control-string fragment that specifies a character by its ordinal value. `#65` is the character `A`. `#$41` is also `A`.
+4. Delphi 13.1 Florence also accepts legacy caret-control fragments such as `^A`, `^M`, `^@`, `^?`, and related forms. Compiler validation confirms that these contribute a single control character to the resulting string. Because the current Embarcadero lexical documentation does not specify the full accepted `^` mapping table, the exact mapping beyond compiler-verified examples is treated here as implementation-defined.
+5. Quoted strings, `#` control-string fragments, and caret-control fragments may be combined without `+` to form a single character string: `'Hello'#13#10'World'`, `'A'^M^J'B'`, and `'A'^A` are all single string literals. However, two quoted strings cannot be concatenated in this way; use the `+` operator for explicit string concatenation: `'Hello' + 'World'`.
+6. A string literal of length 1 is compatible with any character type and with string types.
+7. A string literal of length 0 (`''`) represents the empty string.
+8. String literals are **not** null-terminated in their Pascal representation, but the runtime ensures a null terminator is present for interoperability with C APIs.
 
 #### 1.8.1 Multi-Line String Literals
 
@@ -406,7 +413,7 @@ UNIT = UNIT_HEAD ';'
 
 UNIT_HEAD = 'unit' UNIT_NAME [ PORTABILITY_DIRECTIVE ] ;
 
-UNIT_NAME = IDENT { '.' IDENT } ;
+UNIT_NAME = IDENTIFIER { '.' IDENTIFIER } ;
 ```
 
 A unit name may contain dots, forming a **dotted unit name** (e.g., `System.SysUtils`). The dots are part of the unit name, not scope resolution operators. By convention the source file name matches the unit name with a `.pas` extension (e.g., `System.SysUtils.pas`), but this is not a language requirement: the `in` clause of a `uses` statement may redirect the compiler to any file: `uses MyUnit in 'SomeOtherFile.pas';`.
@@ -4793,6 +4800,8 @@ with          xor
 
 Note: `on` and `at` appear in the reserved word list above and require the `&` prefix to be used as identifiers. However, they only carry syntactic meaning in specific contexts (`on` in `except` handlers; `at` in `raise` statements). They are therefore best described as **context-restricted reserved words**: reserved (cannot be used as bare identifiers) but only semantically significant in their respective contexts. `operator` and `out` are directives ([§A.2](#a2-directives-context-sensitive-59)), not reserved words.
 
+Within class-type declarations, `private`, `protected`, `public`, `published`, and `automated` also act like reserved words even though they are otherwise treated as directives; this is why they remain listed in [§A.2](#a2-directives-context-sensitive-59) instead of the global reserved-word table.
+
 ### A.2 Directives (context-sensitive, 59)
 
 ```
@@ -5176,15 +5185,19 @@ The following terminal symbols are used throughout the grammar but are defined l
 
 ```ebnf
 (* Lexical terminals — see Chapter 1 for full lexical rules *)
-Ident             = LETTER { LETTER | DIGIT | '_' } ;  (* case-insensitive *)
+Ident             = IDENTIFIER ;
 Number            = IntegerLiteral | RealLiteral ;
-IntegerLiteral    = DIGIT_SEQ | '$' HEX_DIGIT_SEQ | '%' BIN_DIGIT_SEQ ;
-RealLiteral       = DIGIT_SEQ '.' DIGIT_SEQ [ ('E'|'e') ['+'|'-'] DIGIT_SEQ ] ;
-StringLiteral     = STRING_PART { STRING_PART } ;
+IntegerLiteral    = DECIMAL_LITERAL | HEX_LITERAL | OCTAL_LITERAL | BINARY_LITERAL ;
+RealLiteral       = FLOAT_LITERAL ;
+StringPart        = QUOTED_STRING | CONTROL_STRING | CARET_CONTROL_STRING ;
+StringLiteral     = StringPart { StringPart } ;
 StringConst       = StringLiteral ;  (* alias used in some productions *)
 BoolConst         = 'True' | 'False' ;
-GUID              = '{' HEX_DIGIT_SEQ '-' HEX_DIGIT_SEQ '-' HEX_DIGIT_SEQ '-'
-                    HEX_DIGIT_SEQ '-' HEX_DIGIT_SEQ '}' ;
+GuidHex4          = HEX_DIGIT HEX_DIGIT HEX_DIGIT HEX_DIGIT ;
+GuidHex8          = GuidHex4 GuidHex4 ;
+GuidHex12         = GuidHex4 GuidHex4 GuidHex4 ;
+GUID              = '{' GuidHex8 '-' GuidHex4 '-' GuidHex4 '-'
+                    GuidHex4 '-' GuidHex12 '}' ;
                     (* e.g. '{00000000-0000-0000-C000-000000000046}' *)
 AsmInstruction    = (* platform-specific assembly; see Chapter 16 *) ;
 ```
